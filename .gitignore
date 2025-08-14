@@ -88,3 +88,13 @@ htmlcov/
 Thumbs.db
 ehthumbs.db
 desktop.ini
+
+# clangd related
+.cache
+
+# python uv related
+.venv
+.python-version
+main.py
+pyproject.toml
+uv.lock
