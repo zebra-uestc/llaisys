@@ -24,7 +24,7 @@ public:
         const std::vector<size_t> &shape,
         llaisysDataType_t dtype,
         llaisysDeviceType_t device_type = LLAISYS_DEVICE_CPU,
-        int device = 0);
+        int device_id = 0);
     ~Tensor() = default;
     // Info
     std::byte *data();
@@ -32,6 +32,8 @@ public:
     size_t ndim() const;
     const std::vector<size_t> &shape() const;
     const std::vector<ptrdiff_t> &strides() const;
+    size_t dim(size_t i) const;
+    ptrdiff_t stride(size_t i) const;
     llaisysDataType_t dtype() const;
     llaisysDeviceType_t deviceType() const;
     int deviceId() const;
@@ -54,7 +56,7 @@ public:
     // Challenging features
     tensor_t contiguous() const;
     tensor_t reshape(const std::vector<size_t> &shape) const;
-    tensor_t to(llaisysDeviceType_t device_type, int device = -1) const;
+    tensor_t to(llaisysDeviceType_t device_type, int device_id = -1) const;
 };
 
 } // namespace llaisys
