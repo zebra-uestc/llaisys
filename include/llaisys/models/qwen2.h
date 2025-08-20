@@ -2,6 +2,8 @@
 #define LLAISYS_MODELS_QWEN2_H
 
 #include "../tensor.h"
+#include "llaisys.h"
+#include <cstddef>
 
 __C {
     struct LlaisysQwen2Meta {
@@ -29,14 +31,28 @@ __C {
         llaisysTensor_t *mlp_down_w;
     };
 
-    struct LlaisysQwen2Model;
+    struct LlaisysQwen2KVCache {
+        llaisysTensor_t *kcache;
+        llaisysTensor_t *vcache;
+    };
 
-    __export struct LlaisysQwen2Model *llaisysQwen2ModelCreate(const LlaisysQwen2Meta *meta, llaisysDeviceType_t device, int *device_ids, int ndevice);
+    struct LlaisysQwen2Model {
+        struct LlaisysQwen2Meta meta;
+        struct LlaisysQwen2Weights weights;
+        struct LlaisysQwen2KVCache kvcache;
+        llaisysDeviceType_t device;
+        int ndevice;
+        int *device_ids;
+    };
+
+    __export struct LlaisysQwen2Model *llaisysQwen2ModelCreate(const LlaisysQwen2Meta *meta, const LlaisysQwen2Weights *weights, llaisysDeviceType_t device, int ndevice, int *device_ids);
 
     __export void llaisysQwen2ModelDestroy(struct LlaisysQwen2Model * model);
 
-    __export struct LlaisysQwen2Weights *llaisysQwen2ModelWeights(struct LlaisysQwen2Model * model);
+    __export struct LlaisysQwen2KVCache *llaisysQwen2KVCacheCreate(struct LlaisysQwen2Model * meta, size_t max_len);
 
-    __export int64_t llaisysQwen2ModelInfer(struct LlaisysQwen2Model * model, int64_t * token_ids, size_t ntoken);
+    __export void llaisysQwen2KVCacheDestroy(struct LlaisysQwen2KVCache * kvcache, size_t nlayer);
+
+    __export int64_t llaisysQwen2ModelInfer(struct LlaisysQwen2Model * model, int64_t *token_ids, size_t ntoken, struct LlaisysQwen2KVCache *kvcache, size_t past_len);
 }
 #endif // LLAISYS_MODELS_QWEN2_H
