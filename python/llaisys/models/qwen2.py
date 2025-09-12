@@ -19,15 +19,21 @@ from ..libllaisys import (
 class Qwen2:
     def __init__(self, model_path, device: DeviceType = DeviceType.CPU):
         model_path = Path(model_path)
+        print(
+            "────────────────────────────────────────────────────────────────────────────────\n",
+            "📦 Qwen2: Initializing Model and Loading Weights\n",
+            "────────────────────────────────────────────────────────────────────────────────\n",
+            sep="",
+        )
 
         # load config
-        print("Qwen2: loading configs...", flush=True)
+        print("🚀 ➡️ Qwen2: loading configs...", flush=True)
         with open(os.path.join(model_path, "config.json"), "r") as f:
             config = json.load(f)
             self.config = config
 
         # load weights
-        print("Qwen2: loading weights...", flush=True)
+        print("💾 ➡️ Qwen2: loading weights...\n\n", flush=True)
         for file in sorted(model_path.glob("*.safetensors")):
             state_dict = {}
             data_ = safetensors.safe_open(file, framework="pytorch", device="cpu")
@@ -37,7 +43,6 @@ class Qwen2:
         # create model
         naming = Qwen2WeightsNaming()
         if naming.match(state_dict):
-            print("Qwen2: creating model...", flush=True)
             ndev = 1
             dev_ids = (c_int * ndev)(*[i for i in range(ndev)])
             self.meta = Qwen2MetaCStruct(config)
@@ -46,7 +51,6 @@ class Qwen2:
                 byref(self.meta), byref(self.weights), device, ndev, dev_ids
             )
             self.weights.release()
-            print("Qwen2: create model ok!!!", flush=True)
         else:
             raise ValueError("state_dict fail weights name compare")
 
@@ -63,7 +67,7 @@ class Qwen2:
         kvcache = LIB_LLAISYS.llaisysQwen2KVCacheCreate(self.model, max_len)
 
         # prefill
-        print("Qwen2: prefilling...", flush=True)
+        print("➡️ 💬 Qwen2: prefilling...", flush=True)
         ntoken = len(tokens)
         token_ids = (c_int64 * ntoken)(*tokens)
         past_len = c_size_t(0)
@@ -71,10 +75,10 @@ class Qwen2:
             self.model, token_ids, c_size_t(ntoken), kvcache, past_len
         )
         tokens.append(next_token)
-        print("current tokens: ", tokens, flush=True)
+        # print("current tokens: ", tokens, flush=True)
 
         # decode
-        print("Qwen2: decoding...", flush=True)
+        print("➡️ 🌀 Qwen2: decoding...\n\n", flush=True)
         for _ in range(max_new_tokens):
             if next_token == self.meta.end_token:
                 break
@@ -85,12 +89,19 @@ class Qwen2:
                 self.model, token_ids, ntoken, kvcache, past_len
             )
             tokens.append(next_token)
-            print("current tokens: ", tokens, flush=True)
+            # print("current tokens: ", tokens, flush=True)
 
         nlayer = self.meta.nlayer
         LIB_LLAISYS.llaisysQwen2KVCacheDestroy(kvcache, nlayer)
+        self.destroy()
 
         return tokens
 
-    def __del__(self):
+    def destroy(self):
         LIB_LLAISYS.llaisysQwen2ModelDestroy(self.model)
+        print(
+            "────────────────────────────────────────────────────────────────────────────────\n",
+            "✅ Qwen2 COMPLETE: All resources cleaned up\n",
+            "────────────────────────────────────────────────────────────────────────────────\n",
+            sep="",
+        )

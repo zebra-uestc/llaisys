@@ -15,8 +15,7 @@
 
 __C {
     __export struct LlaisysQwen2Model *llaisysQwen2ModelCreate(const LlaisysQwen2Meta *meta, const LlaisysQwen2Weights *weights, llaisysDeviceType_t device, int ndevice, int *device_ids) {
-        std::cout << "===== llaisysQwen2ModelCreate: begin =====" << std::endl;
-        std::cout << "===== init model: malloc space! =====" << std::endl;
+        LOG("⚙️  llaisysQwen2ModelCreate: begin\n");
         struct LlaisysQwen2Model *model = (struct LlaisysQwen2Model *)malloc(sizeof(struct LlaisysQwen2Model));
         model->meta = *meta;
         model->device = device;
@@ -49,35 +48,32 @@ __C {
         size_t dqh = hs;
         size_t dkvh = model->meta.nkvh * dh;
 
-        std::cout << "===== Qwen2 configs =====" << std::endl;
-        std::cout << "num_hidden_layers: " << nlayer << std::endl;
-        std::cout << "vocab_size: " << voc << std::endl;
-        std::cout << "intermediate_size: " << di << std::endl;
-        std::cout << "hidden_size：" << hs << std::endl;
-        std::cout << "head_size: " << dh << std::endl;
-        std::cout << "num_attention_heads: " << nh << std::endl;
-        std::cout << "q_head_dim: " << dqh << std::endl;
-        std::cout << "num_key_value_heads: " << nkvh << std::endl;
-        std::cout << "k_v_head_dim: " << dkvh << std::endl;
+        LOG("📋 Qwen2 Model Configs:")
+        print_config("num_hidden_layers:", nlayer, "📊");
+        print_config("vocab_size:", voc, "🗄️");
+        print_config("intermediate_size:", di, "🔧");
+        print_config("hidden_size:", hs, "🔒");
+        print_config("head_size:", dh, "🧠");
+        print_config("num_query_heads:", nh, "🔄");
+        print_config("q_head_dim:", dqh, "🧩");
+        print_config("num_key_value_heads:", nkvh, "🔁");
+        print_config("k_v_head_dim:", dkvh, "🔤");
+        std::cout << std::endl;
 
-        std::cout << "===== Load weights =====" << std::endl;
         // in_embed (151936, 1536)
         std::vector<size_t> shape = {voc, hs};
         model->weights.in_embed = tensorCreate(shape.data(), shape.size(), model->meta.dtype, device, device_ids[0]);
         tensorLoad(model->weights.in_embed, weights->in_embed);
-        std::cout << "===> load in_embed ok" << std::endl;
 
         // out_embed (151936, 1536)
         shape = {voc, hs};
         model->weights.out_embed = tensorCreate(shape.data(), shape.size(), model->meta.dtype, device, device_ids[0]);
         tensorLoad(model->weights.out_embed, weights->out_embed);
-        std::cout << "===> load out_embed ok" << std::endl;
 
         // out_norm (1536)
         shape = {hs};
         model->weights.out_norm_w = tensorCreate(shape.data(), shape.size(), model->meta.dtype, device, device_ids[0]);
         tensorLoad(model->weights.out_norm_w, weights->out_norm_w);
-        std::cout << "===> load out_norm ok" << std::endl;
 
         for (size_t i = 0; i < nlayer; ++i) {
             // attn_norm
@@ -140,12 +136,8 @@ __C {
             model->weights.mlp_down_w[i] = tensorCreate(shape.data(), shape.size(), model->meta.dtype, device, device_ids[0]);
             tensorLoad(model->weights.mlp_down_w[i], weights->mlp_down_w[i]);
         }
-        std::cout << "===> load model.layers ok" << std::endl;
 
-        std::cout << "===== llaisysQwen2ModelCreate: end =====" << std::endl;
-        std::cout << std::endl
-                  << std::endl
-                  << std::endl;
+        LOG("🎉 llaisysQwen2ModelCreate: end\n\n");
         return model;
     }
 
@@ -153,7 +145,7 @@ __C {
         if (model == NULL) {
             return;
         }
-        std::cout << "===== llaisysQwen2ModelDestroy: begin =====" << std::endl;
+        LOG("🗑️  llaisysQwen2ModelDestroy: begin")
 
         // 1. 释放设备ID数组
         if (model->device_ids != NULL) {
@@ -210,18 +202,13 @@ __C {
         // 4. 最后释放顶层结构体
         free(model);
 
-        std::cout << "===== llaisysQwen2ModelDestroy: end =====" << std::endl;
-        std::cout << std::endl
-                  << std::endl
-                  << std::endl;
+        LOG("✅  llaisysQwen2ModelDestroy: end\n\n");
         return;
     }
 
     __export struct LlaisysQwen2KVCache *llaisysQwen2KVCacheCreate(struct LlaisysQwen2Model * model, size_t max_len) {
         struct LlaisysQwen2KVCache *kvcache = (struct LlaisysQwen2KVCache *)malloc(sizeof(struct LlaisysQwen2KVCache));
-        std::cout << "===== llaisysQwen2KVCacheCreate: begin =====" << std::endl;
-
-        std::cout << "===== init kvcache: malloc space! =====" << std::endl;
+        LOG("🧠 llaisysQwen2KVCacheCreate: begin\n");
 
         size_t nlayer = model->meta.nlayer;
         kvcache->kcache = (llaisysTensor_t *)malloc(sizeof(llaisysTensor_t) * nlayer);
@@ -234,25 +221,21 @@ __C {
         int device_id = model->device_ids[0];
         std::vector<size_t> shape{max_len, nkvh, dh};
 
-        std::cout << "===== KVCache configs =====" << std::endl;
-        std::cout << "kcache: nlayer * (max_len, nkvh, d)" << std::endl;
-        std::cout << "vcache: nlayer * (max_len, nkvh, dv)" << std::endl;
-        std::cout << "nlayer: " << nlayer << std::endl;
-        std::cout << "dkvh: " << nkvh << std::endl;
-        std::cout << "d: " << dh << std::endl;
-        std::cout << "dv: " << dh << std::endl;
+        LOG("📊 KVCache Configs:")
+        LOG("   💾 kcache: nlayer × (max_len, nkvh, d)")
+        LOG("   💾 vcache: nlayer × (max_len, nkvh, dv)")
+        print_config("nlayer", nlayer, "📦");
+        print_config("nkvh", nkvh, "🔢");
+        print_config("d", dh, "🧱");
+        print_config("dv", dh, "🧱");
+        std::cout << std::endl;
 
         for (size_t i = 0; i < nlayer; ++i) {
             kvcache->kcache[i] = tensorCreate(shape.data(), shape.size(), dtype, device, device_id);
             kvcache->vcache[i] = tensorCreate(shape.data(), shape.size(), dtype, device, device_id);
         }
 
-        std::cout << "===== create nlayer kvcache ok =====" << std::endl;
-
-        std::cout << "===== llaisysQwen2KVCacheCreate: end =====" << std::endl;
-        std::cout << std::endl
-                  << std::endl
-                  << std::endl;
+        LOG("🎉 llaisysQwen2KVCacheCreate: end\n\n")
 
         return kvcache;
     }
@@ -261,8 +244,9 @@ __C {
         if (kvcache == NULL) {
             return;
         }
-        std::cout << "===== llaisysQwen2KVCacheDestroy: begin =====" << std::endl;
+        LOG("🗑️  llaisysQwen2KVCacheDestroy: begin");
 
+        LOG("   🧹 freeing kvcache memory...")
         for (size_t i = 0; i < nlayer; ++i) {
             if (kvcache->kcache[i] != NULL) {
                 tensorDestroy(kvcache->kcache[i]);
@@ -281,11 +265,9 @@ __C {
         kvcache->vcache = NULL;
 
         free(kvcache);
+        LOG("   ✅ kvcache destroyed successfully")
 
-        std::cout << "===== llaisysQwen2KVCacheDestroy: end =====" << std::endl;
-        std::cout << std::endl
-                  << std::endl
-                  << std::endl;
+        LOG("🎉 llaisysQwen2KVCacheDestroy: end\n\n");
 
         return;
     }
@@ -296,7 +278,7 @@ __C {
         ASSERT(ntoken != 0, "ntoken is 0");
         ASSERT(kvcache != NULL, "kvcache is NULL");
 
-        std::cout << "llaisysQwen2ModelInfer==> ntoken: " << ntoken << ", pastlen: " << past_len << std::endl;
+        // std::cout << "llaisysQwen2ModelInfer==> ntoken: " << ntoken << ", pastlen: " << past_len << std::endl;
 
         size_t nlayer = model->meta.nlayer;
         size_t voc = model->meta.voc;
@@ -332,7 +314,7 @@ __C {
         shape = {seqlen};
         llaisysTensor_t input_token_tensor = tensorCreate(shape.data(), shape.size(), LLAISYS_DTYPE_I64, device, device_id);
         tensorLoad(input_token_tensor, token_ids);
-#ifndef DEBUG
+#ifdef DEBUG
         std::cout << "input_token_tensor: " << std::endl;
         tensorDebug(input_token_tensor);
 #endif
@@ -531,7 +513,7 @@ __C {
         llaisysTensor_t max_idx_tensor = tensorCreate(shape.data(), shape.size(), LLAISYS_DTYPE_I64, device, device_id);
         llaisysTensor_t max_vals_tensor = tensorCreate(shape.data(), shape.size(), dtype, device, device_id);
         llaisysArgmax(max_idx_tensor, max_vals_tensor, last_output_embed_tensor);
-#ifndef DEBUG
+#ifdef DEBUG
         std::cout << "max_idx_tensor: " << std::endl;
         tensorDebug(max_idx_tensor);
 #endif
