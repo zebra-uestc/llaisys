@@ -32,6 +32,9 @@ class Qwen2:
             config = json.load(f)
             self.config = config
 
+        if device == DeviceType.CPU:
+            self.config["torch_dtype"] = "float32"
+
         # load weights
         print("💾 ➡️ Qwen2: loading weights...\n\n", flush=True)
         for file in sorted(model_path.glob("*.safetensors")):
