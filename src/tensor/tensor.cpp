@@ -1,5 +1,6 @@
 #include "tensor.hpp"
 
+#include "../ops/rearrange/op.hpp"
 #include "../utils.hpp"
 
 #include <algorithm>
@@ -372,19 +373,199 @@ void Tensor::load(const void *src_) {
     );
 }
 
+/**
+ * @brief Returns a contiguous copy of the tensor, or itself if already contiguous.
+ *
+ * If the tensor is already stored in contiguous memory (i.e., isContiguous() == true),
+ * this function returns a new shared pointer to *this* (no copy performed).
+ * Otherwise, it allocates new contiguous device memory, copies all elements from the
+ * original tensor, and returns a new tensor view over that memory.
+ *
+ * This operation is essential for operations requiring dense storage (e.g., view(),
+ * linear algebra kernels, serialization, or interop with C-style APIs).
+ *
+ * @return A tensor with the same shape, dtype, and data as this tensor, but guaranteed
+ *         to be stored in row-major contiguous layout. May share storage if already contiguous.
+ * @note This function may trigger a full memory copy if the tensor is non-contiguous.
+ *       Use only when necessary — prefer view() on contiguous tensors for zero-cost reshapes.
+ */
 tensor_t Tensor::contiguous() const {
-    TO_BE_IMPLEMENTED();
-    return std::shared_ptr<Tensor>(new Tensor(_meta, _storage));
+    // If the tensor is already contiguous, return a shallow clone (same storage, new wrapper).
+    // This ensures we return a valid tensor_t without modifying the original object.
+    // Note: We do not return 'this' or use shared_from_this() because:
+    //       - 'this' is a raw pointer; cannot be directly wrapped into shared_ptr safely.
+    //       - We cannot assume the object was created via make_shared (required for shared_from_this).
+    //       - Creating a new shared_ptr to a copy of this metadata is safe and predictable.
+    tensor_t old_tensor = std::shared_ptr<Tensor>(new Tensor(_meta, _storage, _offset));
+
+    if (this->isContiguous()) {
+        return old_tensor; // Already contiguous — return cloned view
+    }
+
+    // Compute total byte size required for the new contiguous storage
+    const size_t total_bytes = numel() * elementSize(); // = number of elements × dtype size in bytes
+
+    const auto dtype = _meta.dtype;
+    const auto device_type = deviceType();
+    const auto device_id = deviceId();
+
+    core::storage_t new_storage{nullptr};
+
+    // Allocate destination storage on the correct device:
+    // - If target is CPU but current runtime is GPU -> allocate host memory explicitly
+    // - Otherwise, set device context and allocate device memory
+    if (device_type == LLAISYS_DEVICE_CPU && core::context().runtime().deviceType() != LLAISYS_DEVICE_CPU) {
+        // Force allocation in host memory when copying to CPU from non-CPU runtime
+        new_storage = core::context().runtime().allocateHostStorage(total_bytes);
+    } else {
+        // Ensure kernel launches execute on the tensor's native device
+        core::context().setDevice(device_type, device_id);
+        new_storage = core::context().runtime().allocateDeviceStorage(total_bytes);
+    }
+
+    // Construct new metadata with row-major contiguous strides
+    // Strides are computed in reverse order: last dimension has stride=1, others follow
+    std::vector<ptrdiff_t> new_strides(_meta.shape.size());
+    ptrdiff_t stride = 1;
+    for (int i = static_cast<int>(_meta.shape.size()) - 1; i >= 0; --i) {
+        new_strides[i] = stride;
+        stride *= static_cast<ptrdiff_t>(_meta.shape[i]);
+    }
+
+    TensorMeta new_meta{dtype, _meta.shape, new_strides};
+    tensor_t new_tensor = std::shared_ptr<Tensor>(new Tensor(new_meta, new_storage, 0));
+
+    // Perform data copy from original tensor to new contiguous tensor.
+    // We pass 'old_tensor' (a safe shared_ptr to a clone of this) as source,
+    // avoiding direct use of 'this' or shared_from_this(), ensuring safety regardless
+    // of how the original tensor was constructed (make_shared, new+shared_ptr, etc.).
+    // The rearrange() operation performs an efficient device-side copy using
+    // the original shape and strides to map logical indices to physical locations.
+    llaisys::ops::rearrange(new_tensor, old_tensor);
+
+    return new_tensor;
 }
 
+/**
+ * @brief Returns a new tensor with the specified shape, automatically handling contiguity.
+ *
+ * This function reshapes the tensor to the given shape by first ensuring the underlying
+ * storage is contiguous (if not already), then creating a view of the data with the new layout.
+ * Unlike `view()`, this function works regardless of whether the tensor is currently contiguous.
+ *
+ * @param shape The desired new shape. Must contain the same number of elements as the original tensor.
+ * @return A new Tensor view with the requested shape and contiguous memory layout.
+ * @note This function may trigger a memory copy if the tensor is non-contiguous.
+ *       Use `view()` directly if you require zero-copy semantics and can guarantee contiguity.
+ * @see view() for details on shape compatibility checks — this function inherits its validation.
+ */
 tensor_t Tensor::reshape(const std::vector<size_t> &shape) const {
-    TO_BE_IMPLEMENTED();
-    return std::shared_ptr<Tensor>(new Tensor(_meta, _storage));
+    // If tensor is already contiguous, directly create a view — no copy needed
+    if (this->isContiguous()) {
+        return this->view(shape);
+    }
+
+    // Otherwise, make a contiguous copy first, then create a view of the copy
+    // This ensures the resulting tensor has predictable, dense memory layout
+    return this->contiguous()->view(shape);
 }
 
-tensor_t Tensor::to(llaisysDeviceType_t device_type, int device) const {
-    TO_BE_IMPLEMENTED();
-    return std::shared_ptr<Tensor>(new Tensor(_meta, _storage));
-}
+/**
+ * @brief Returns a new tensor with the same data and metadata, but moved to the specified device.
+ *
+ * This function creates a copy of the tensor on the target device (device_type, device_id).
+ * If the target device matches the current tensor's device, it returns a shallow clone
+ * (same storage, new tensor wrapper) — no data copy performed.
+ * Otherwise, it allocates new storage on the target device and performs a synchronous
+ * device-to-device (D2D) or host-to-device (H2D) memory copy.
+ *
+ * This is the standard interface for device migration in deep learning frameworks,
+ * equivalent to PyTorch's `.to(device)` or TensorFlow's `tf.device`.
+ *
+ * @param device_type The target device type (e.g., LLAISYS_DEVICE_CPU or LLAISYS_DEVICE_CUDA).
+ * @param device_id   The target device ID (e.g., 0 for GPU:0).
+ * @return A new Tensor with the same shape, dtype, and values, located on the target device.
+ * @note This operation may trigger a full memory copy if the source and target devices differ.
+ *       Use this method to explicitly control where computation occurs (e.g., moving data to GPU).
+ */
+tensor_t Tensor::to(llaisysDeviceType_t device_type, int device_id) const {
+    // If target device matches current device, return a shallow clone (zero-copy)
+    if (device_type == deviceType() && device_id == deviceId()) {
+        return std::shared_ptr<Tensor>(new Tensor(_meta, _storage, _offset));
+    }
 
+    // Compute total byte size of data to copy
+    const size_t total_bytes = numel() * elementSize();
+
+    // Allocate new storage on the target device
+    core::storage_t new_storage{nullptr};
+
+    // Allocate destination storage on the correct device:
+    // - If target is CPU but current runtime is GPU -> allocate host memory explicitly
+    // - Otherwise, set device context and allocate device memory
+    if (device_type == LLAISYS_DEVICE_CPU && core::context().runtime().deviceType() != LLAISYS_DEVICE_CPU) {
+        // Force allocation in host memory when copying to CPU from non-CPU runtime
+        new_storage = core::context().runtime().allocateHostStorage(total_bytes);
+    } else {
+        // Ensure kernel launches execute on the tensor's native device
+        core::context().setDevice(device_type, device_id);
+        new_storage = core::context().runtime().allocateDeviceStorage(total_bytes);
+    }
+
+    // Construct new tensor metadata (identical shape, strides, dtype)
+    TensorMeta new_meta{_meta.dtype, _meta.shape, _meta.strides};
+
+    // Create new tensor wrapper around the new storage
+    tensor_t new_tensor = std::shared_ptr<Tensor>(new Tensor(new_meta, new_storage, 0));
+
+    // Perform data transfer from current tensor's storage to new storage
+    // Determine direction: from current device to target device
+    llaisysDeviceType_t src_device_type = deviceType();
+    int src_device_id = deviceId();
+
+    // Ensure source context is active before reading
+    if (src_device_type != core::context().runtime().deviceType() || src_device_id != core::context().runtime().deviceId()) {
+        core::context().setDevice(src_device_type, src_device_id);
+    }
+
+    // Copy data synchronously
+    if (src_device_type == LLAISYS_DEVICE_CPU && device_type == LLAISYS_DEVICE_CPU) {
+        // H2H: Both on CPU — use standard memcpy via CPU runtime
+        core::context().runtime().api()->memcpy_sync(
+            new_storage->memory(), // dst: host memory
+            _storage->memory(),    // src: host memory
+            total_bytes,
+            LLAISYS_MEMCPY_H2H);
+
+    } else if (src_device_type == LLAISYS_DEVICE_CPU && device_type != LLAISYS_DEVICE_CPU) {
+        // H2D: Source is CPU, destination is GPU — must be executed by GPU runtime
+        // Switch context to target device (GPU) to perform the copy
+        core::context().setDevice(device_type, device_id);
+        core::context().runtime().api()->memcpy_sync(
+            new_storage->memory(), // dst: device memory (GPU)
+            _storage->memory(),    // src: host memory (CPU)
+            total_bytes,
+            LLAISYS_MEMCPY_H2D);
+
+    } else if (src_device_type != LLAISYS_DEVICE_CPU && device_type == LLAISYS_DEVICE_CPU) {
+        // D2H: Source is GPU, destination is CPU — must be executed by GPU runtime
+        // Already in source (GPU) context — safe to invoke D2H
+        core::context().runtime().api()->memcpy_sync(
+            new_storage->memory(), // dst: host memory (CPU)
+            _storage->memory(),    // src: device memory (GPU)
+            total_bytes,
+            LLAISYS_MEMCPY_D2H);
+
+    } else {
+        // D2D: Source and destination are both non-CPU devices (e.g., GPU->GPU)
+        // Execute on source device context (assumes peer-to-peer support if needed)
+        core::context().runtime().api()->memcpy_sync(
+            new_storage->memory(), // dst: target device memory
+            _storage->memory(),    // src: source device memory
+            total_bytes,
+            LLAISYS_MEMCPY_D2D);
+    }
+
+    return new_tensor;
+}
 } // namespace llaisys
