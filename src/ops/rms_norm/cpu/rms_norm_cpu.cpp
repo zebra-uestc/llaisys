@@ -2,40 +2,47 @@
 
 #include "../../../utils.hpp"
 
+#include <cblas.h>
 #include <cmath>
 #include <cstddef>
+#include <omp.h>
 #include <type_traits>
 
 template <typename T>
 void rms_norm_(T *out, const T *in, const T *weight, float eps, size_t nrow, size_t ncol) {
-    T *out_t{};
-    const T *in_t{};
+#pragma omp parallel for schedule(static)
     for (size_t i = 0; i < nrow; ++i) {
-        out_t = out + i * ncol;
-        in_t = in + i * ncol;
+        T *out_t = out + i * ncol;
+        const T *in_t = in + i * ncol;
 
         if constexpr (std::is_same_v<T, llaisys::bf16_t> || std::is_same_v<T, llaisys::fp16_t>) {
             float rms{}, square_sum{}, avg_square_sum{};
+            std::vector<float> in_f32(ncol);
+            std::vector<float> weight_f32(ncol);
 
             for (size_t j = 0; j < ncol; ++j) {
-                float item = llaisys::utils::cast<float>(in_t[j]);
-                square_sum += item * item;
+                in_f32[j] = llaisys::utils::cast<float>(in_t[j]);
+                weight_f32[j] = llaisys::utils::cast<float>(weight[j]);
             }
-            avg_square_sum = square_sum / ncol;
+
+            square_sum = cblas_sdot(ncol, in_f32.data(), 1, in_f32.data(), 1);
+            avg_square_sum = square_sum / static_cast<float>(ncol);
             rms = std::sqrt(avg_square_sum + eps);
 
             for (size_t j = 0; j < ncol; ++j) {
-                float ans = llaisys::utils::cast<float>(weight[j]) * llaisys::utils::cast<float>(in_t[j]) / rms;
-                out_t[j] = llaisys::utils::cast<T>(ans);
+                out_t[j] = llaisys::utils::cast<T>(weight_f32[j] * in_f32[j] / rms);
             }
 
         } else {
             T rms{}, square_sum{}, avg_square_sum{};
 
-            for (size_t j = 0; j < ncol; ++j) {
-                square_sum += in_t[j] * in_t[j];
+            if constexpr (std::is_same_v<T, float>) {
+                square_sum = cblas_sdot(ncol, in_t, 1, in_t, 1);
+            } else if constexpr (std::is_same_v<T, double>) {
+                square_sum = cblas_ddot(ncol, in_t, 1, in_t, 1);
             }
-            avg_square_sum = square_sum / ncol;
+
+            avg_square_sum = square_sum / static_cast<T>(ncol);
             rms = std::sqrt(avg_square_sum + eps);
 
             for (size_t j = 0; j < ncol; ++j) {
