@@ -2,39 +2,76 @@
 
 #include "../../../utils.hpp"
 
+#include <cblas.h>
 #include <cmath>
 #include <cstddef>
+#include <cstring>
 #include <type_traits>
 
 template <typename T>
-void linear_(T *out, const T *in, const T *weight, const T *bias, size_t nrow, size_t ncol_out, size_t ncol_in) {
-    T *out_t{};
-    const T *in_t{}, *weight_t{};
+void linear_(T *out, const T *in, const T *weight, const T *bias,
+             size_t nrow, size_t ncol_out, size_t ncol_in) {
 
-    for (size_t i = 0; i < nrow; ++i) {
-        out_t = out + i * ncol_out;
-        in_t = in + i * ncol_in;
-        for (size_t j = 0; j < ncol_out; ++j) {
-            weight_t = weight + j * ncol_in;
-            if constexpr (std::is_same_v<T, llaisys::bf16_t> || std::is_same_v<T, llaisys::fp16_t>) {
-                float ans{0};
-                for (size_t k = 0; k < ncol_in; ++k) {
-                    ans += llaisys::utils::cast<float>(in_t[k]) * llaisys::utils::cast<float>(weight_t[k]);
-                }
-                if (bias) {
-                    ans += llaisys::utils::cast<float>(bias[j]);
-                }
-                out_t[j] = llaisys::utils::cast<T>(ans);
-            } else {
-                T ans{0};
-                for (size_t k = 0; k < ncol_in; ++k) {
-                    ans += in_t[k] * weight_t[k];
-                }
-                if (bias) {
-                    ans += bias[j];
-                }
-                out_t[j] = ans;
+    const size_t M = nrow;
+    const size_t N = ncol_out;
+    const size_t K = ncol_in;
+
+    if constexpr (std::is_same_v<T, float>) {
+        if (bias) {
+            for (size_t i = 0; i < M; ++i) {
+                std::memcpy(out + i * N, bias, N * sizeof(T));
             }
+            cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
+                        M, N, K, 1.0f, in, K, weight, K, 1.0f, out, N);
+        } else {
+            cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
+                        M, N, K, 1.0f, in, K, weight, K, 0.0f, out, N);
+        }
+
+    } else if constexpr (std::is_same_v<T, double>) {
+        if (bias) {
+            for (size_t i = 0; i < M; ++i) {
+                std::memcpy(out + i * N, bias, N * sizeof(T));
+            }
+            cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
+                        M, N, K, 1.0, in, K, weight, K, 1.0, out, N);
+        } else {
+            cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
+                        M, N, K, 1.0, in, K, weight, K, 0.0, out, N);
+        }
+    } else if constexpr (std::is_same_v<T, llaisys::fp16_t> || std::is_same_v<T, llaisys::bf16_t>) {
+        std::vector<float> in_fp32(M * K);
+        std::vector<float> weight_fp32(N * K);
+        std::vector<float> out_fp32(M * N);
+
+        for (size_t i = 0; i < M * K; ++i) {
+            in_fp32[i] = llaisys::utils::cast<float>(in[i]);
+        }
+        for (size_t i = 0; i < N * K; ++i) {
+            weight_fp32[i] = llaisys::utils::cast<float>(weight[i]);
+        }
+
+        if (bias) {
+            std::vector<float> bias_fp32(N);
+            for (size_t j = 0; j < N; ++j) {
+                bias_fp32[j] = llaisys::utils::cast<float>(bias[j]);
+            }
+
+            for (size_t i = 0; i < M; ++i) {
+                std::memcpy(out_fp32.data() + i * N, bias_fp32.data(), N * sizeof(float));
+            }
+
+            cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
+                        M, N, K, 1.0f, in_fp32.data(), K,
+                        weight_fp32.data(), K, 1.0f, out_fp32.data(), N);
+        } else {
+            cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
+                        M, N, K, 1.0f, in_fp32.data(), K,
+                        weight_fp32.data(), K, 0.0f, out_fp32.data(), N);
+        }
+
+        for (size_t i = 0; i < M * N; ++i) {
+            out[i] = llaisys::utils::cast<T>(out_fp32[i]);
         }
     }
 }
