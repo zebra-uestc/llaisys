@@ -1,32 +1,55 @@
 #include "argmax_cpu.hpp"
-
 #include "../../../utils.hpp"
 
 #include <cmath>
 #include <cstdint>
+#include <omp.h>
 
 template <typename T>
 void argmax_(int64_t *max_idx, T *max_val, const T *vals, size_t numel) {
-    int64_t ans_idx{};
-    T ans_val{};
-    for (size_t i = 0; i < numel; i++) {
-        if constexpr (std::is_same_v<T, llaisys::bf16_t> || std::is_same_v<T, llaisys::fp16_t>) {
-            float f_tmp = llaisys::utils::cast<float>(vals[i]);
-            float f_ans_val = llaisys::utils::cast<float>(ans_val);
-            if (f_tmp > f_ans_val) {
-                ans_val = llaisys::utils::cast<T>(f_tmp);
-                ans_idx = i;
-            }
-        } else {
-            T tmp = vals[i];
-            if (tmp > ans_val) {
-                ans_val = tmp;
-                ans_idx = i;
+    if constexpr (std::is_same_v<T, llaisys::bf16_t> || std::is_same_v<T, llaisys::fp16_t>) {
+        using MaxPair = std::pair<float, int64_t>;
+
+#pragma omp declare reduction(max_pair:MaxPair : \
+    omp_out = (omp_in.first >  omp_out.first ||  \
+              (omp_in.first == omp_out.first && omp_in.second < omp_out.second)) \
+              ? omp_in : omp_out) \
+    initializer(omp_priv = MaxPair{std::numeric_limits<float>::lowest(), INT64_MAX})
+
+        MaxPair result{std::numeric_limits<float>::lowest(), 0};
+
+#pragma omp parallel for reduction(max_pair : result)
+        for (size_t i = 0; i < numel; ++i) {
+            float f_val = llaisys::utils::cast<float>(vals[i]);
+            if (f_val > result.first) {
+                result = {f_val, i};
             }
         }
+
+        *max_val = llaisys::utils::cast<T>(result.first);
+        *max_idx = result.second;
+    } else {
+        using MaxPair = std::pair<T, int64_t>;
+
+#pragma omp declare reduction(max_pair:MaxPair : \
+    omp_out = (omp_in.first >  omp_out.first ||  \
+              (omp_in.first == omp_out.first && omp_in.second < omp_out.second)) \
+              ? omp_in : omp_out) \
+    initializer(omp_priv = MaxPair{std::numeric_limits<T>::lowest(), INT64_MAX})
+
+        MaxPair result{std::numeric_limits<T>::lowest(), 0};
+
+#pragma omp parallel for reduction(max_pair : result)
+        for (size_t i = 0; i < numel; ++i) {
+            T f_val = vals[i];
+            if (f_val > result.first) {
+                result = {f_val, i};
+            }
+        }
+
+        *max_val = result.first;
+        *max_idx = result.second;
     }
-    *max_idx = ans_idx;
-    *max_val = ans_val;
 }
 
 namespace llaisys::ops::cpu {

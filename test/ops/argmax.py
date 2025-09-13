@@ -27,7 +27,7 @@ def test_op_argmax(
     torch_argmax(max_idx, max_val, vals)
     llaisys.Ops.argmax(max_idx_, max_val_, vals_)
 
-    assert check_equal(max_val_, max_val, strict=True) or check_equal(
+    assert check_equal(max_val_, max_val, strict=True) and check_equal(
         max_idx_, max_idx, strict=True
     )
 
@@ -46,7 +46,7 @@ if __name__ == "__main__":
     parser.add_argument("--device", default="cpu", choices=["cpu", "nvidia"], type=str)
     parser.add_argument("--profile", action="store_true")
     args = parser.parse_args()
-    testShapes = [(4,), (4096,)]
+    testShapes = [(4,), (4096,), (151936,)]
     testDtype = ["f32", "f16", "bf16"]
     print(f"Testing Ops.argmax on {args.device}")
     for shape in testShapes:
