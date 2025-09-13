@@ -1,6 +1,8 @@
 add_rules("mode.debug", "mode.release")
 set_encodings("utf-8")
 
+add_requires("openmp", "openblas")
+
 add_includedirs("include")
 
 -- CPU --

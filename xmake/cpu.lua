@@ -20,6 +20,8 @@ target("llaisys-ops-cpu")
         add_cxflags("-fPIC", "-Wno-unknown-pragmas")
     end
 
+    add_packages("openmp", "openblas")
+
     add_files("../src/ops/*/cpu/*.cpp")
 
     on_install(function (target) end)
