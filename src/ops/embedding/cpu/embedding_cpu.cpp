@@ -8,9 +8,12 @@
 
 template <typename T>
 void embedding_(T *out, const int64_t *index, const T *weight, size_t numel, size_t len) {
-    size_t nlen = numel / len;
-    for (size_t i = 0; i < nlen; i++) {
-        int64_t idx = index[i];
+    const size_t nlen = numel / len;
+
+    // Avoid OpenMP for memory-bound operations;
+    // single-threaded memcpy is faster due to CPU optimizations (SIMD/prefetch) and avoids thread scheduling overhead.
+    for (size_t i = 0; i < nlen; ++i) {
+        const int64_t idx = index[i];
         std::memcpy(out + (i * len), weight + (idx * len), len * sizeof(T));
     }
 }
