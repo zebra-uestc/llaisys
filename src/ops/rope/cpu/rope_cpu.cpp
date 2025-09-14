@@ -8,45 +8,29 @@
 
 template <typename T>
 void rope_(T *out, const T *in, const int64_t *pos_ids, float theta, size_t seqlen, size_t nhead, size_t d) {
-    T *out_t{};
-    const T *in_t{};
+    size_t half_d = d / 2;
+    std::vector<double> inv_theta(half_d);
+    for (size_t k = 0; k < half_d; ++k) {
+        double expo = static_cast<double>(2 * k) / static_cast<double>(d);
+        inv_theta[k] = 1.0 / std::pow(theta, expo);
+    }
+
+#pragma omp parallel for collapse(2) schedule(static)
     for (size_t i = 0; i < seqlen; ++i) {
-        out_t = out + (i * nhead * d);
-        in_t = in + (i * nhead * d);
-        int64_t p_i = pos_ids[i];
-        out_t -= d;
-        in_t -= d;
-        if constexpr (std::is_same_v<T, llaisys::bf16_t> || std::is_same_v<T, llaisys::fp16_t>) {
-            for (size_t j = 0; j < nhead; ++j) {
-                out_t += d;
-                in_t += d;
-                for (size_t k = 0; k < d / 2; ++k) {
-                    float expo = static_cast<float>(2 * k) / static_cast<float>(d);
-                    float angle = p_i / std::pow(theta, expo);
-                    float sin_val = std::sin(angle);
-                    float cos_val = std::cos(angle);
+        for (size_t j = 0; j < nhead; ++j) {
+            T *out_t = out + (i * nhead + j) * d;
+            const T *in_t = in + (i * nhead + j) * d;
+            int64_t p_i = pos_ids[i];
 
-                    float a_ik = llaisys::utils::cast<float>(in_t[k]);
-                    float b_ik = llaisys::utils::cast<float>(in_t[k + d / 2]);
-                    out_t[k] = llaisys::utils::cast<T>(a_ik * cos_val - b_ik * sin_val);
-                    out_t[k + d / 2] = llaisys::utils::cast<T>(b_ik * cos_val + a_ik * sin_val);
-                }
-            }
-        } else {
-            for (size_t j = 0; j < nhead; ++j) {
-                out_t += d;
-                in_t += d;
-                for (size_t k = 0; k < d / 2; ++k) {
-                    float expo = static_cast<float>(2 * k) / static_cast<float>(d);
-                    T angle = p_i / std::pow(theta, expo);
-                    T sin_val = std::sin(angle);
-                    T cos_val = std::cos(angle);
+            for (size_t k = 0; k < half_d; ++k) {
+                double angle = p_i * inv_theta[k];
+                double cos_val = std::cos(angle);
+                double sin_val = std::sin(angle);
 
-                    T a_ik = in_t[k];
-                    T b_ik = in_t[k + d / 2];
-                    out_t[k] = a_ik * cos_val - b_ik * sin_val;
-                    out_t[k + d / 2] = b_ik * cos_val + a_ik * sin_val;
-                }
+                double a = llaisys::utils::cast<double>(in_t[k]);
+                double b = llaisys::utils::cast<double>(in_t[k + half_d]);
+                out_t[k] = llaisys::utils::cast<T>(a * cos_val - b * sin_val);
+                out_t[k + half_d] = llaisys::utils::cast<T>(b * cos_val + a * sin_val);
             }
         }
     }
