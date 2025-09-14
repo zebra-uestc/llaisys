@@ -72,6 +72,7 @@ if __name__ == "__main__":
         # qlen, kvlen, nh, nkvh, hd
         (2, 2, 1, 1, 4),
         (5, 11, 4, 2, 8),
+        (10, 100, 32, 4, 4096),
     ]
     testDtypePrec = [
         # type, atol, rtol

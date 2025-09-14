@@ -5,68 +5,68 @@
 #include <cmath>
 #include <cstddef>
 #include <cstring>
+#include <omp.h>
 #include <vector>
 
 template <typename T>
 void self_attention_(T *attn_val, const T *q, const T *k, const T *v, float scale, size_t seqlen, size_t nhead, size_t dv, size_t total_len, size_t nkvhead, size_t d) {
+    // ========== Group-Query Attention (GQA) with causal mask ==========
 
-    const size_t group_size = nhead / nkvhead; // GQA分组大小
+    const size_t group_size = nhead / nkvhead;
 
-    // 1. 初始化输出为0
+    /* ---------- 1. zero the output buffer ---------- */
     const size_t attn_val_size = seqlen * nhead * dv;
     std::memset(attn_val, 0, attn_val_size * sizeof(T));
 
-    // 2. 检查维度约束
+    /* ---------- 2. sanity check ---------- */
     if (nhead % nkvhead != 0) {
-        throw std::invalid_argument("nhead must be multiple of nkvhead");
+        throw std::invalid_argument("nhead must be a multiple of nkvhead");
     }
 
-// 3. 主计算循环
-#pragma omp parallel for collapse(2)
-    for (size_t i = 0; i < seqlen; ++i) {    // 当前序列位置
-        for (size_t h = 0; h < nhead; ++h) { // 查询头索引
+/* ---------- 3. main compute loop ---------- */
+#pragma omp parallel for collapse(2) schedule(dynamic)
+    for (size_t i = 0; i < seqlen; ++i) {    // current token position
+        for (size_t h = 0; h < nhead; ++h) { // query-head index
 
-            // 确定对应的键值头分组 (GQA)
-            const size_t kvh = h / group_size;
+            /* --- map q-head -> kv-head (GQA) --- */
+            const size_t kvh = h / group_size; // KV-head for this query-head
 
-            // --- 步骤1：计算注意力分数 ---
-            // 临时存储分数和softmax变量
-            std::vector<float> scores(total_len, -std::numeric_limits<float>::infinity());
+            /* ---------- step-1: compute attention scores ---------- */
+            std::vector<float> scores(total_len,
+                                      -std::numeric_limits<float>::infinity());
             float max_score = -std::numeric_limits<float>::infinity();
 
-            // 仅计算因果位置 (j <= past_len + i)
-            const size_t causal_end = (total_len - seqlen) + i + 1;
-            for (size_t j = 0; j < causal_end; ++j) {
+            const size_t causal_end = (total_len - seqlen) + i + 1; // causal boundary
+            for (size_t j = 0; j < causal_end; ++j) {               // position in KV-cache
                 float dot = 0.0f;
 
-                // Q[i,h]·K[j,kvh] 点积
+                const size_t q_base = i * nhead * d + h * d;
+                const size_t k_base = j * nkvhead * d + kvh * d;
+
+                #pragma omp simd reduction(+ : dot)
                 for (size_t dim = 0; dim < d; ++dim) {
-                    const size_t q_idx = i * nhead * d + h * d + dim;
-                    const size_t k_idx = j * nkvhead * d + kvh * d + dim;
-                    // 使用统一的类型转换
-                    const float q_val = llaisys::utils::cast<float>(q[q_idx]);
-                    const float k_val = llaisys::utils::cast<float>(k[k_idx]);
+                    float q_val = llaisys::utils::cast<float>(q[q_base + dim]);
+                    float k_val = llaisys::utils::cast<float>(k[k_base + dim]);
                     dot += q_val * k_val;
                 }
-
-                scores[j] = dot * scale;
-                if (scores[j] > max_score) {
-                    max_score = scores[j];
-                }
+                scores[j] = dot * scale; // scale factor
+                max_score = std::max(max_score, scores[j]);
             }
 
-            // --- 步骤2：因果softmax归一化 ---
+            /* ---------- step-2: causal softmax ---------- */
             float exp_sum = 0.0f;
+            
+            #pragma omp simd reduction(+ : exp_sum)
             for (size_t j = 0; j < causal_end; ++j) {
-                float exp_val = std::exp(scores[j] - max_score);
-                scores[j] = exp_val;
-                exp_sum += exp_val;
+                scores[j] = std::exp(scores[j] - max_score); // numerically stable
+                exp_sum += scores[j];
             }
 
-            // --- 步骤3：加权聚合V矩阵 ---
+            /* ---------- step-3: aggregate V with attention weights ---------- */
             for (size_t dv_dim = 0; dv_dim < dv; ++dv_dim) {
                 float out_val = 0.0f;
 
+                #pragma omp simd reduction(+ : out_val)
                 for (size_t j = 0; j < causal_end; ++j) {
                     const size_t v_idx = j * nkvhead * dv + kvh * dv + dv_dim;
                     const float v_val = llaisys::utils::cast<float>(v[v_idx]);
@@ -74,11 +74,13 @@ void self_attention_(T *attn_val, const T *q, const T *k, const T *v, float scal
                 }
 
                 const size_t attn_idx = i * nhead * dv + h * dv + dv_dim;
+                out_val /= exp_sum; // finalize softmax
 
+                /* down-cast if necessary */
                 if constexpr (std::is_same_v<T, llaisys::bf16_t> || std::is_same_v<T, llaisys::fp16_t>) {
-                    attn_val[attn_idx] = llaisys::utils::cast<T>(out_val / exp_sum); // softmax归一化
+                    attn_val[attn_idx] = llaisys::utils::cast<T>(out_val);
                 } else {
-                    attn_val[attn_idx] = out_val / exp_sum; // softmax归一化
+                    attn_val[attn_idx] = out_val;
                 }
             }
         }
