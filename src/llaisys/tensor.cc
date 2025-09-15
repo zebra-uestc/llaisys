@@ -2,7 +2,7 @@
 
 #include <vector>
 
-__C {
+__LLAISYS__C {
     llaisysTensor_t tensorCreate(
         size_t * shape,
         size_t ndim,

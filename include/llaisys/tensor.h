@@ -3,7 +3,7 @@
 
 #include "../llaisys.h"
 
-__C {
+__LLAISYS__C {
     typedef struct LlaisysTensor *llaisysTensor_t;
 
     __export llaisysTensor_t tensorCreate(

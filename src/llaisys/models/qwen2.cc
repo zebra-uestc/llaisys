@@ -13,7 +13,7 @@
 
 // #define DEBUG
 
-__C {
+__LLAISYS__C {
     __export struct LlaisysQwen2Model *llaisysQwen2ModelCreate(const LlaisysQwen2Meta *meta, const LlaisysQwen2Weights *weights, llaisysDeviceType_t device, int ndevice, int *device_ids) {
         LOG("⚙️  llaisysQwen2ModelCreate: begin\n");
         struct LlaisysQwen2Model *model = (struct LlaisysQwen2Model *)malloc(sizeof(struct LlaisysQwen2Model));

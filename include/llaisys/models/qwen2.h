@@ -5,7 +5,7 @@
 #include "llaisys.h"
 #include <cstddef>
 
-__C {
+__LLAISYS__C {
     struct LlaisysQwen2Meta {
         llaisysDataType_t dtype;
         size_t nlayer, hs, nh, nkvh, dh, di, maxseq, voc;
