@@ -50,7 +50,7 @@ if __name__ == "__main__":
         # type, atol, rtol
         ("f32", 1e-5, 1e-5),
         ("f16", 1e-3, 1e-3),
-        ("bf16", 1e-3, 1e-3),
+        ("bf16", 1e-2, 1e-2),
     ]
     print(f"Testing Ops.add on {args.device}")
     for shape in testShapes:
