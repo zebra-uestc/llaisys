@@ -29,6 +29,12 @@ target("llaisys-utils")
         add_cxflags("-fPIC", "-Wno-unknown-pragmas")
     end
 
+    if is_plat("linux")and is_arch("x86_64") then
+        add_cxflags("-mavx512f -mf16c")
+        add_mxflags("-mavx512f -mf16c")
+    end
+
+
     add_files("src/utils/*.cpp")
 
     on_install(function (target) end)

@@ -1,5 +1,7 @@
 #include "llaisys.h"
 
+#include <cstddef>
+#include <immintrin.h>
 #include <iostream>
 #include <stdexcept>
 
@@ -113,18 +115,27 @@ fp16_t _f32_to_f16(float val);
 float _bf16_to_f32(bf16_t val);
 bf16_t _f32_to_bf16(float val);
 
+float fp16_to_fp32_f16c(fp16_t x);
+fp16_t fp32_to_fp16_f16c(float x);
+
+void fp16_to_fp32_batch_f16c(float *dst, const fp16_t *src, size_t count);
+void fp32_to_fp16_batch_f16c(fp16_t *dst, const float *src, size_t count);
+
+void bf16_to_fp32_batch(float *dst, const bf16_t *src, size_t count);
+void fp32_to_bf16_batch(bf16_t *dst, const float *src, size_t count);
+
 template <typename TypeTo, typename TypeFrom>
 TypeTo cast(TypeFrom val) {
     if constexpr (std::is_same<TypeTo, TypeFrom>::value) {
         return val;
     } else if constexpr (std::is_same<TypeTo, fp16_t>::value && std::is_same<TypeFrom, float>::value) {
-        return _f32_to_f16(val);
+        return fp32_to_fp16_f16c(val);
     } else if constexpr (std::is_same<TypeTo, fp16_t>::value && !std::is_same<TypeFrom, float>::value) {
-        return _f32_to_f16(static_cast<float>(val));
+        return fp32_to_fp16_f16c(static_cast<float>(val));
     } else if constexpr (std::is_same<TypeFrom, fp16_t>::value && std::is_same<TypeTo, float>::value) {
-        return _f16_to_f32(val);
+        return fp16_to_fp32_f16c(val);
     } else if constexpr (std::is_same<TypeFrom, fp16_t>::value && !std::is_same<TypeTo, float>::value) {
-        return static_cast<TypeTo>(_f16_to_f32(val));
+        return static_cast<TypeTo>(fp16_to_fp32_f16c(val));
     } else if constexpr (std::is_same<TypeTo, bf16_t>::value && std::is_same<TypeFrom, float>::value) {
         return _f32_to_bf16(val);
     } else if constexpr (std::is_same<TypeTo, bf16_t>::value && !std::is_same<TypeFrom, float>::value) {
