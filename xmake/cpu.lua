@@ -20,12 +20,11 @@ target("llaisys-ops-cpu")
         add_cxflags("-fPIC", "-Wno-unknown-pragmas")
     end
 
-    -- Use native ISA to Speedup
-    if is_plat("linux")and is_arch("x86_64") then
-        add_cxflags("-march=native")
-    end
+    -- optimization and CPU-specific flags
+    add_cxflags("-march=native", "-fopenmp", {force = true})
 
-    add_packages("openmp", "openblas")
+    -- link flags: keep -fopenmp for the linker as well
+    add_ldflags("-fopenmp", {force = true})
 
     add_files("../src/ops/*/cpu/*.cpp")
 

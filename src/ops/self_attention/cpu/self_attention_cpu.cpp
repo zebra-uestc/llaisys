@@ -24,7 +24,7 @@ void self_attention_(T *attn_val, const T *q, const T *k, const T *v, float scal
     }
 
 /* ---------- 3. main compute loop ---------- */
-#pragma omp parallel for collapse(2) schedule(dynamic)
+#pragma omp parallel for collapse(2)
     for (size_t i = 0; i < seqlen; ++i) {    // current token position
         for (size_t h = 0; h < nhead; ++h) { // query-head index
 

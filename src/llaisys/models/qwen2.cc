@@ -9,6 +9,7 @@
 #include <cstring>
 #include <cwchar>
 #include <iostream>
+#include <omp.h>
 #include <vector>
 
 // #define DEBUG
@@ -277,6 +278,8 @@ __LLAISYS__C {
         ASSERT(token_ids != NULL, "token_ids is NULL");
         ASSERT(ntoken != 0, "ntoken is 0");
         ASSERT(kvcache != NULL, "kvcache is NULL");
+
+        omp_set_num_threads(24);
 
         // std::cout << "llaisysQwen2ModelInfer==> ntoken: " << ntoken << ", pastlen: " << past_len << std::endl;
 

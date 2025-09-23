@@ -1,8 +1,8 @@
 #include "linear_cpu.hpp"
+#include "matmul.hpp"
 
 #include "../../../utils.hpp"
 
-#include <cblas.h>
 #include <cmath>
 #include <cstddef>
 #include <cstring>
@@ -21,58 +21,80 @@ void linear_(T *out, const T *in, const T *weight, const T *bias,
             for (size_t i = 0; i < M; ++i) {
                 std::memcpy(out + i * N, bias, N * sizeof(T));
             }
-            cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
-                        M, N, K, 1.0f, in, K, weight, K, 1.0f, out, N);
+            matmul(in, weight, out, M, N, K);
         } else {
-            cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
-                        M, N, K, 1.0f, in, K, weight, K, 0.0f, out, N);
+            memset(out, 0, M * N * sizeof(T));
+            matmul(in, weight, out, M, N, K);
         }
 
-    } else if constexpr (std::is_same_v<T, double>) {
-        if (bias) {
-            for (size_t i = 0; i < M; ++i) {
-                std::memcpy(out + i * N, bias, N * sizeof(T));
-            }
-            cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
-                        M, N, K, 1.0, in, K, weight, K, 1.0, out, N);
-        } else {
-            cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
-                        M, N, K, 1.0, in, K, weight, K, 0.0, out, N);
-        }
-    } else if constexpr (std::is_same_v<T, llaisys::fp16_t> || std::is_same_v<T, llaisys::bf16_t>) {
+    } else if constexpr (std::is_same_v<T, llaisys::fp16_t>) {
         std::vector<float> in_fp32(M * K);
         std::vector<float> weight_fp32(N * K);
-        std::vector<float> out_fp32(M * N);
+        std::vector<float> out_fp32(M * N, {});
 
-        for (size_t i = 0; i < M * K; ++i) {
-            in_fp32[i] = llaisys::utils::cast<float>(in[i]);
-        }
-        for (size_t i = 0; i < N * K; ++i) {
-            weight_fp32[i] = llaisys::utils::cast<float>(weight[i]);
-        }
+        // for (size_t i = 0; i < M * K; ++i) {
+        //     in_fp32[i] = llaisys::utils::cast<float>(in[i]);
+        // }
+        // for (size_t i = 0; i < N * K; ++i) {
+        //     weight_fp32[i] = llaisys::utils::cast<float>(weight[i]);
+        // }
+        llaisys::utils::fp16_to_fp32_batch_f16c(in_fp32.data(), in, M * K);
+        llaisys::utils::fp16_to_fp32_batch_f16c(weight_fp32.data(), weight, N * K);
 
         if (bias) {
             std::vector<float> bias_fp32(N);
-            for (size_t j = 0; j < N; ++j) {
-                bias_fp32[j] = llaisys::utils::cast<float>(bias[j]);
-            }
+            // for (size_t j = 0; j < N; ++j) {
+            //     bias_fp32[j] = llaisys::utils::cast<float>(bias[j]);
+            // }
+            llaisys::utils::fp16_to_fp32_batch_f16c(bias_fp32.data(), bias, N);
 
             for (size_t i = 0; i < M; ++i) {
                 std::memcpy(out_fp32.data() + i * N, bias_fp32.data(), N * sizeof(float));
             }
 
-            cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
-                        M, N, K, 1.0f, in_fp32.data(), K,
-                        weight_fp32.data(), K, 1.0f, out_fp32.data(), N);
+            matmul(in_fp32.data(), weight_fp32.data(), out_fp32.data(), M, N, K);
         } else {
-            cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
-                        M, N, K, 1.0f, in_fp32.data(), K,
-                        weight_fp32.data(), K, 0.0f, out_fp32.data(), N);
+            matmul(in_fp32.data(), weight_fp32.data(), out_fp32.data(), M, N, K);
         }
 
-        for (size_t i = 0; i < M * N; ++i) {
-            out[i] = llaisys::utils::cast<T>(out_fp32[i]);
+        // for (size_t i = 0; i < M * N; ++i) {
+        //     out[i] = llaisys::utils::cast<T>(out_fp32[i]);
+        // }
+        llaisys::utils::fp32_to_fp16_batch_f16c(out, out_fp32.data(), M * N);
+    } else if constexpr (std::is_same_v<T, llaisys::bf16_t>) {
+        std::vector<float> in_fp32(M * K);
+        std::vector<float> weight_fp32(N * K);
+        std::vector<float> out_fp32(M * N, {});
+
+        // for (size_t i = 0; i < M * K; ++i) {
+        //     in_fp32[i] = llaisys::utils::cast<float>(in[i]);
+        // }
+        // for (size_t i = 0; i < N * K; ++i) {
+        //     weight_fp32[i] = llaisys::utils::cast<float>(weight[i]);
+        // }
+        llaisys::utils::bf16_to_fp32_batch(in_fp32.data(), in, M * K);
+        llaisys::utils::bf16_to_fp32_batch(weight_fp32.data(), weight, N * K);
+
+        if (bias) {
+            std::vector<float> bias_fp32(N);
+            // for (size_t j = 0; j < N; ++j) {
+            //     bias_fp32[j] = llaisys::utils::cast<float>(bias[j]);
+            // }
+            llaisys::utils::bf16_to_fp32_batch(bias_fp32.data(), bias, N);
+
+            for (size_t i = 0; i < M; ++i) {
+                std::memcpy(out_fp32.data() + i * N, bias_fp32.data(), N * sizeof(float));
+            }
+
+            matmul(in_fp32.data(), weight_fp32.data(), out_fp32.data(), M, N, K);
+        } else {
+            matmul(in_fp32.data(), weight_fp32.data(), out_fp32.data(), M, N, K);
         }
+
+        // for (size_t i = 0; i < M * N; ++i) {
+        //     out[i] = llaisys::utils::cast<T>(out_fp32[i]);
+        // }
+        llaisys::utils::fp32_to_bf16_batch(out, out_fp32.data(), M * N);
     }
 }
 

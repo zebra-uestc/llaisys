@@ -8,7 +8,7 @@
 
 template <typename T>
 void swiglu_(T *out, const T *gate, const T *up, size_t numel) {
-#pragma omp parallel for simd schedule(static)
+#pragma omp parallel for simd
     for (size_t i = 0; i < numel; i++) {
         if constexpr (std::is_same_v<T, llaisys::bf16_t> || std::is_same_v<T, llaisys::fp16_t>) {
             float gate_i = llaisys::utils::cast<float>(gate[i]);

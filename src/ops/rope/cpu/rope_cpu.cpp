@@ -15,7 +15,7 @@ void rope_(T *out, const T *in, const int64_t *pos_ids, float theta, size_t seql
         inv_theta[k] = 1.0 / std::pow(theta, expo);
     }
 
-#pragma omp parallel for collapse(2) schedule(static)
+#pragma omp parallel for collapse(2)
     for (size_t i = 0; i < seqlen; ++i) {
         for (size_t j = 0; j < nhead; ++j) {
             T *out_t = out + (i * nhead + j) * d;

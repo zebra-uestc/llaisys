@@ -3,8 +3,6 @@ set_encodings("utf-8")
 
 add_rules("plugin.compile_commands.autoupdate", {outputdir = "build"})
 
-add_requires("openmp", "openblas")
-
 add_includedirs("include")
 
 -- CPU --
@@ -107,7 +105,6 @@ target_end()
 
 target("llaisys")
     set_kind("shared")
-    set_default(true)
     add_deps("llaisys-utils")
     add_deps("llaisys-device")
     add_deps("llaisys-core")
@@ -119,6 +116,12 @@ target("llaisys")
     add_files("src/llaisys/*.cc")
     add_files("src/llaisys/models/*.cc")
     set_installdir(".")
+
+    -- optimization and CPU-specific flags
+    add_cxflags("-march=native", "-fopenmp", {force = true})
+
+    -- link flags: keep -fopenmp for the linker as well
+    add_ldflags("-fopenmp", {force = true})
 
     
     after_install(function (target)
