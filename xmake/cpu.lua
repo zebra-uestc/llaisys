@@ -20,17 +20,10 @@ target("llaisys-ops-cpu")
         add_cxflags("-fPIC", "-Wno-unknown-pragmas")
     end
 
-    -- For AVX512
+    -- Use native ISA to Speedup
     if is_plat("linux")and is_arch("x86_64") then
-        add_cxflags("-mavx512f -mfma -mf16c")
-        add_mxflags("-mavx512f -mfma -mf16c")
+        add_cxflags("-march=native")
     end
-    
-    -- For AVX2
-    -- if is_plat("linux")and is_arch("x86_64") then
-    --     add_cxflags("-mavx2 -mfma -mf16c")
-    --     add_mxflags("-mavx2 -mfma -mf16c")
-    -- end
 
     add_packages("openmp", "openblas")
 
