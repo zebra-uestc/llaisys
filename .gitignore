@@ -98,3 +98,6 @@ desktop.ini
 main.py
 pyproject.toml
 uv.lock
+
+# site files
+docs/site/

@@ -1,0 +1,117 @@
+# ============================================================
+# MkDocs Configuration for LLAISYS Documentation
+# ============================================================
+
+# ------------------------------------------------------------
+# Basic site metadata
+# ------------------------------------------------------------
+site_name: LLAISYS
+site_url: https://zebra-uestc.github.io/llaisys/
+repo_url: https://github.com/zebra-uestc/llaisys
+repo_name: zebra-uestc/llaisys   # Optional text next to the repo icon
+
+# ------------------------------------------------------------
+# Theme configuration (Material for MkDocs)
+# ------------------------------------------------------------
+theme:
+  name: material
+  icon:
+    repo: fontawesome/brands/github  # GitHub icon in header
+
+  features:
+    # --- Navigation ---
+    - navigation.tabs            # Use top-level tabs
+    - navigation.tabs.sticky     # Keep tabs visible while scrolling
+    - navigation.sections        # Group pages into collapsible sections
+    - navigation.expand          # Auto-expand active section
+    - navigation.top             # Add "Back to top" floating button
+    # - toc.integrate            # Disabled: keep TOC on right sidebar
+
+    # --- Search ---
+    - search.suggest             # Show suggestions while typing
+    - search.highlight           # Highlight search terms
+
+    # --- Content & UI ---
+    - content.code.copy          # Copy button for code blocks
+    - content.action.edit        # "Edit this page" link
+    - header.repo                # Display repo icon in header
+
+  # --- Light/Dark mode ---
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: blue
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: light-blue
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+  version:
+    provider: mike               # Version selector in header
+
+  nesting: false                 # Disable deep nesting for cleaner sidebar
+  breadcrumb: false
+
+# ------------------------------------------------------------
+# Navigation structure
+# ------------------------------------------------------------
+nav:
+  - Home: index.md
+
+  - Operators:
+    - CPU: ops/cpu.md
+
+# ------------------------------------------------------------
+# Plugins
+# ------------------------------------------------------------
+plugins:
+  - search                      # Built-in search plugin
+  - mike                        # Versioning plugin
+
+# ------------------------------------------------------------
+# Extra configuration
+# ------------------------------------------------------------
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/zebra-uestc/llaisys
+
+  version:
+    provider: mike              # Enable version selector
+    default: latest             # Default version to display
+
+# ------------------------------------------------------------
+# Markdown extensions
+# ------------------------------------------------------------
+markdown_extensions:
+  # --- Table of Contents (Right sidebar) ---
+  - toc:
+      permalink: true           # Anchor links for headings
+      baselevel: 1
+      toc_depth: "2-3"
+
+  # --- Code and content enhancements ---
+  - pymdownx.superfences        # Nested code blocks with syntax highlighting
+  - pymdownx.highlight:
+      use_pygments: true        # Use Pygments for highlighting
+      anchor_linenums: true     # Add anchors for line numbers
+      linenums: true            # Show line numbers
+      pygments_style: material  # Material theme
+      auto_title: true          # Display language title above code
+  - pymdownx.inlinehilite       # Inline code highlighting
+  - pymdownx.details            # Collapsible <details> blocks
+  - pymdownx.emoji:             # Emoji rendering (Twemoji)
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - admonition                  # Notes, warnings, tips, etc.
+
+# ============================================================
+# End of Configuration
+# ============================================================
