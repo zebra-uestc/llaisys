@@ -100,4 +100,4 @@ pyproject.toml
 uv.lock
 
 # site files
-docs/site/
+site/
