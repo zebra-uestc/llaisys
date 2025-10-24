@@ -18,11 +18,11 @@ hide:
 
 - **模型支持**：Qwen2 模型在 CPU 上的完整推理流程（含 KV Cache）
 - **算子优化**：
-  - 使用 **AVX 指令集** 加速核心计算
-  - 通过 **OpenMP** 实现多线程并行
-  - 高效数据类型转换：
-    - `f16 <=> f32`：利用 **F16C 指令**
-    - `bf16 <=> f32`：利用 **AVX 指令**
+    - 使用 **AVX 指令集** 加速核心计算
+    - 通过 **OpenMP** 实现多线程并行
+    - 高效数据类型转换：
+        - `f16 <=> f32`：利用 **F16C 指令**
+        - `bf16 <=> f32`：利用 **AVX 指令**
 
 ---
 
@@ -40,9 +40,11 @@ xmake install
 # 安装 Python 前端包
 pip install ./python/
 ```
+
 ### 算子测试
 
 > 以 `add` 算子为例。
+
 ```bash
 # 正确性测试（CPU）
 python test/ops/add.py
@@ -76,4 +78,4 @@ python test/test_infer.py --model /path/to/qwen2/model --test
 ## 📚 相关资源
 
 - 训练营课程：[大模型推理与服务系统](https://beta.infinitensor.com/camp/summer2025/stage/1/course/llm-inference-and-serving-system)
-- 项目仓库：[InfiniTensor/llaisys](https://github.com/InfiniTensor/llaisys)
+- 课程项目仓库：[InfiniTensor/llaisys](https://github.com/InfiniTensor/llaisys)
