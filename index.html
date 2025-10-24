@@ -645,12 +645,14 @@
 <h2 id="_1">✅ 当前实现<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>模型支持</strong>：Qwen2 模型在 CPU 上的完整推理流程（含 KV Cache）</li>
-<li><strong>算子优化</strong>：</li>
+<li><strong>算子优化</strong>：<ul>
 <li>使用 <strong>AVX 指令集</strong> 加速核心计算</li>
 <li>通过 <strong>OpenMP</strong> 实现多线程并行</li>
 <li>高效数据类型转换：<ul>
 <li><code>f16 &lt;=&gt; f32</code>：利用 <strong>F16C 指令</strong></li>
 <li><code>bf16 &lt;=&gt; f32</code>：利用 <strong>AVX 指令</strong></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
