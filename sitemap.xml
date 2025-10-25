@@ -2,10 +2,10 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://zebra-uestc.github.io/llaisys/</loc>
-         <lastmod>2025-10-24</lastmod>
+         <lastmod>2025-10-25</lastmod>
     </url>
     <url>
-         <loc>https://zebra-uestc.github.io/llaisys/ops/cpu/</loc>
-         <lastmod>2025-10-24</lastmod>
+         <loc>https://zebra-uestc.github.io/llaisys/ops/list/</loc>
+         <lastmod>2025-10-25</lastmod>
     </url>
 </urlset>
