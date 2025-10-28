@@ -82,7 +82,7 @@ class Qwen2:
 
         # decode
         print("➡️ 🌀 Qwen2: decoding...\n\n", flush=True)
-        for _ in range(max_new_tokens):
+        for _ in range(max_new_tokens - 1):
             if next_token == self.meta.end_token:
                 break
             ntoken = 1

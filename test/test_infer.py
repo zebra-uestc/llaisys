@@ -25,7 +25,7 @@ def load_hf_model(model_path=None, device_name="cpu"):
     tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
     model = AutoModelForCausalLM.from_pretrained(
         model_path,
-        torch_dtype=torch.bfloat16,
+        torch_dtype=torch.float32,
         device_map=torch_device(device_name),
         trust_remote_code=True,
     )
@@ -96,7 +96,10 @@ if __name__ == "__main__":
     if args.test:
         top_p, top_k, temperature = 1.0, 1, 1.0
 
+    start_time = time.time()
     tokenizer, model, model_path = load_hf_model(args.model, args.device)
+    end_time = time.time()
+    print(f"\n\n\nLoad HF Model => Time elapsed: {(end_time - start_time):.2f}s\n")
 
     # Example prompt
     start_time = time.time()
@@ -122,7 +125,11 @@ if __name__ == "__main__":
     print("\n")
     print(f"Time elapsed: {(end_time - start_time):.2f}s\n")
 
+    start_time = time.time()
     model = load_llaisys_model(model_path, args.device)
+    end_time = time.time()
+    print(f"Load LLAISYS Model => Time elapsed: {(end_time - start_time):.2f}s\n")
+
     start_time = time.time()
     llaisys_tokens, llaisys_output = llaisys_infer(
         args.prompt,
