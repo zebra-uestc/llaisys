@@ -114,7 +114,7 @@ target("llaisys")
     set_languages("cxx17")
     set_warnings("all", "error")
     add_files("src/llaisys/*.cc")
-    add_files("src/llaisys/models/*.cc")
+    add_files("src/llaisys/models/qwen2_test.cc")
     set_installdir(".")
 
     -- optimization and CPU-specific flags
