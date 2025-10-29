@@ -1,9 +1,9 @@
 import json
 import os
+import time
 from ctypes import byref, c_int, c_int64, c_size_t
 from pathlib import Path
 from typing import Sequence
-
 
 import safetensors
 
@@ -71,6 +71,7 @@ class Qwen2:
 
         # prefill
         print("➡️ 💬 Qwen2: prefilling...", flush=True)
+        start_time = time.time()
         ntoken = len(tokens)
         token_ids = (c_int64 * ntoken)(*tokens)
         past_len = c_size_t(0)
@@ -78,10 +79,14 @@ class Qwen2:
             self.model, token_ids, c_size_t(ntoken), kvcache, past_len
         )
         tokens.append(next_token)
+        end_time = time.time()
+        prefill_time = end_time - start_time
+        print(f"🤖 LLAISYS Prefill Time: {prefill_time:.4f}s")
         # print("current tokens: ", tokens, flush=True)
 
         # decode
         print("➡️ 🌀 Qwen2: decoding...\n\n", flush=True)
+        start_time = time.time()
         for _ in range(max_new_tokens - 1):
             if next_token == self.meta.end_token:
                 break
@@ -93,6 +98,9 @@ class Qwen2:
             )
             tokens.append(next_token)
             # print("current tokens: ", tokens, flush=True)
+        end_time = time.time()
+        decode_time = end_time - start_time
+        print(f"🌀 LLAISYS Decode Time: {decode_time:.4f}s")
 
         nlayer = self.meta.nlayer
         LIB_LLAISYS.llaisysQwen2KVCacheDestroy(kvcache, nlayer)
