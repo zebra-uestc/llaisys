@@ -1,0 +1,99 @@
+# ============================================================================
+# C Files Configuration
+# ============================================================================
+If:
+  PathMatch: .*\.(c|h)$
+CompileFlags:
+  Compiler: /usr/bin/gcc
+
+---
+
+# ============================================================================
+# C++ Files Configuration
+# ============================================================================
+If:
+  PathMatch: .*\.(c|h)pp
+CompileFlags:
+  Compiler: /usr/bin/g++
+
+---
+
+# ============================================================================
+# CUDA Files Configuration
+# ============================================================================
+If:
+  PathMatch: .*\.cuh?
+CompileFlags:
+  Compiler: /usr/local/cuda/bin/nvcc
+  
+  # --------------------------------------------------------------------------
+  # CUDA-specific compile flags
+  # --------------------------------------------------------------------------
+  Add:
+    # Specify GPU architecture (required for proper type support like bfloat16)
+    - "--cuda-gpu-arch=sm_89"
+  
+  # --------------------------------------------------------------------------
+  # Remove CUDA flags that are unknown to clang
+  # --------------------------------------------------------------------------
+  Remove:
+    # CUDA fatbin arguments
+    - "-Xfatbin*"
+    
+    # CUDA architecture flags
+    - "-gencode*"
+    - "--generate-code*"
+    
+    # CUDA compiler options
+    - "-ccbin*"
+    - "--compiler-options*"
+    
+    # CUDA extended language features
+    - "--expt-extended-lambda"
+    - "--expt-relaxed-constexpr"
+    - "--extended-lambda"
+    
+    # CUDA-specific flags
+    - "-forward-unknown-to-host-compiler"
+    - "-Werror=cross-execution-space-call"
+    - "-G"
+    - "--generate-line-info"
+    - "-rdc=true"
+    
+    # Xcompiler flags
+    - "-Xcompiler=-fPIC"
+    - "-Xcompiler=-Wall"
+    - "-Xcompiler=-Werror"
+    - "-Xcompiler=-Wno-error=deprecated-declarations"
+
+# --------------------------------------------------------------------------
+# CUDA-specific diagnostics suppression
+# --------------------------------------------------------------------------
+Diagnostics:
+  Suppress:
+    - "variadic_device_fn"
+    - "attributes_not_allowed"
+
+---
+
+# ============================================================================
+# Global Settings (Apply to all files)
+# ============================================================================
+CompileFlags:
+  # --------------------------------------------------------------------------
+  # Global compile flags
+  # --------------------------------------------------------------------------
+  Add:
+    # Report all errors without limit
+    - "-ferror-limit=0"
+
+# ------------------------------------------------------------------------------
+# Code intelligence settings
+# ------------------------------------------------------------------------------
+Hover:
+  # Disable showing "aka" (also known as) types in hover info
+  ShowAKA: No
+
+InlayHints:
+  # Disable inline hints for parameters and types
+  Enabled: No

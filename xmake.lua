@@ -46,8 +46,13 @@ target("llaisys-device")
     add_deps("llaisys-utils")
     add_deps("llaisys-device-cpu")
 
+    if has_config("nv-gpu") then
+        add_deps("llaisys-device-nvidia")
+    end
+
     set_languages("cxx17")
     set_warnings("all", "error")
+
     if not is_plat("windows") then
         add_cxflags("-fPIC", "-Wno-unknown-pragmas")
     end
@@ -97,6 +102,10 @@ target("llaisys-ops")
     if not is_plat("windows") then
         add_cxflags("-fPIC", "-Wno-unknown-pragmas")
     end
+
+    if has_config("nv-gpu") then
+        add_deps("llaisys-ops-nvidia")
+    end
     
     add_files("src/ops/*/*.cpp")
 
@@ -122,7 +131,6 @@ target("llaisys")
 
     -- link flags: keep -fopenmp for the linker as well
     add_ldflags("-fopenmp", {force = true})
-
     
     after_install(function (target)
         -- copy shared library to python package
