@@ -38,3 +38,24 @@ using cuda_bfloat162 = nv_bfloat162;
             throw std::runtime_error("Assertion failed");     \
         }                                                     \
     } while (0)
+
+// ============================================================================
+// Type conversion utilities
+// ============================================================================
+template <typename T>
+__device__ __forceinline__ float to_float(T val) { return static_cast<float>(val); }
+
+template <>
+__device__ __forceinline__ float to_float<half>(half val) { return __half2float(val); }
+
+template <>
+__device__ __forceinline__ float to_float<__nv_bfloat16>(__nv_bfloat16 val) { return __bfloat162float(val); }
+
+template <typename T>
+__device__ __forceinline__ T from_float(float val) { return static_cast<T>(val); }
+
+template <>
+__device__ __forceinline__ half from_float<half>(float val) { return __float2half(val); }
+
+template <>
+__device__ __forceinline__ __nv_bfloat16 from_float<__nv_bfloat16>(float val) { return __float2bfloat16(val); }
