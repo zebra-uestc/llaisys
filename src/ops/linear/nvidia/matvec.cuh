@@ -4,8 +4,6 @@
 
 #define FLOAT4_CONST(value) (reinterpret_cast<const float4 *>(&(value))[0])
 
-constexpr size_t WARP_SIZE = 32;
-
 __global__ void matvec_kernel_warp(float *c, const float *a, const float *B, const float *bias, const size_t N, const size_t K) {
     size_t bid = blockIdx.x;
     __shared__ float smem[BLOCK_SIZE / WARP_SIZE];

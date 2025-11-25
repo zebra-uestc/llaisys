@@ -8,6 +8,8 @@
 #include <stdlib.h>       // for exit()
 
 #define BLOCK_SIZE 256
+constexpr size_t WARP_SIZE = 32;
+
 constexpr inline int ceil_div(int a, int b) {
     return (a + b - 1) / b;
 }
@@ -59,3 +61,63 @@ __device__ __forceinline__ half from_float<half>(float val) { return __float2hal
 
 template <>
 __device__ __forceinline__ __nv_bfloat16 from_float<__nv_bfloat16>(float val) { return __float2bfloat16(val); }
+
+// ============================================================================
+// Utility Functions
+// ============================================================================
+
+__device__ __forceinline__ float warp_reduce_sum(float val) {
+#pragma unroll
+    for (int offset = WARP_SIZE / 2; offset > 0; offset /= 2) {
+        val += __shfl_down_sync(0xffffffff, val, offset);
+    }
+    return val;
+}
+
+__device__ __forceinline__ float warp_reduce_max(float val) {
+#pragma unroll
+    for (int offset = WARP_SIZE / 2; offset > 0; offset /= 2) {
+        val = fmaxf(val, __shfl_down_sync(0xffffffff, val, offset));
+    }
+    return val;
+}
+
+__device__ __forceinline__ float block_reduce_sum(float val, float *shared_mem, int tid, int block_size) {
+    int lane = tid % WARP_SIZE;
+    int wid = tid / WARP_SIZE;
+    int num_warps = (block_size + WARP_SIZE - 1) / WARP_SIZE;
+
+    val = warp_reduce_sum(val);
+
+    if (lane == 0) {
+        shared_mem[wid] = val;
+    }
+    __syncthreads();
+
+    val = (tid < num_warps) ? shared_mem[tid] : 0.0f;
+    if (wid == 0) {
+        val = warp_reduce_sum(val);
+    }
+
+    return val;
+}
+
+__device__ __forceinline__ float block_reduce_max(float val, float *shared_mem, int tid, int block_size) {
+    int lane = tid % WARP_SIZE;
+    int wid = tid / WARP_SIZE;
+    int num_warps = (block_size + WARP_SIZE - 1) / WARP_SIZE;
+
+    val = warp_reduce_max(val);
+
+    if (lane == 0) {
+        shared_mem[wid] = val;
+    }
+    __syncthreads();
+
+    val = (tid < num_warps) ? shared_mem[tid] : -INFINITY;
+    if (wid == 0) {
+        val = warp_reduce_max(val);
+    }
+
+    return val;
+}
