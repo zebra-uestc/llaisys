@@ -10,7 +10,8 @@
 #define BLOCK_SIZE 256
 constexpr size_t WARP_SIZE = 32;
 
-constexpr inline int ceil_div(int a, int b) {
+// Ceiling division
+__host__ __device__ inline int ceil_div(int a, int b) {
     return (a + b - 1) / b;
 }
 

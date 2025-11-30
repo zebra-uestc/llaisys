@@ -15,7 +15,7 @@
 // Each warp computes a 32x64 output tile
 // Each thread computes an 8x8 output sub-tile
 __global__
-__launch_bounds__(256, 2) void linear_128x128x8_kernel(
+__launch_bounds__(256, 2) void linear_fp32_kernel(
     float *C,
     const float *A,
     const float *B,
