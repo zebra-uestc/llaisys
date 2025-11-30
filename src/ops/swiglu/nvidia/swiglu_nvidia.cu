@@ -8,122 +8,124 @@
 namespace llaisys::ops::nvidia {
 
 /**
- * Packed type traits
- */
-template <typename T>
-struct PackedUtils;
-
-// FP32: 1 float4 = 4 floats
-template <>
-struct PackedUtils<float> {
-    using PackedType = float4;
-    static constexpr int pack_size = 4;
-};
-
-// FP16: 1 float4 = 8 halfs
-template <>
-struct PackedUtils<__half> {
-    using PackedType = float4;
-    static constexpr int pack_size = 8;
-};
-
-// BF16: 1 float4 = 8 bf16s
-template <>
-struct PackedUtils<__nv_bfloat16> {
-    using PackedType = float4;
-    static constexpr int pack_size = 8;
-};
-
-/**
- * Type conversion helpers
- */
-template <typename T>
-__device__ __forceinline__ float to_float(T x);
-
-template <>
-__device__ __forceinline__ float to_float(float x) { return x; }
-
-template <>
-__device__ __forceinline__ float to_float(__half x) { return __half2float(x); }
-
-template <>
-__device__ __forceinline__ float to_float(__nv_bfloat16 x) { return __bfloat162float(x); }
-
-template <typename T>
-__device__ __forceinline__ T from_float(float x);
-
-template <>
-__device__ __forceinline__ float from_float(float x) { return x; }
-
-template <>
-__device__ __forceinline__ __half from_float(float x) { return __float2half(x); }
-
-template <>
-__device__ __forceinline__ __nv_bfloat16 from_float(float x) { return __float2bfloat16(x); }
-
-/**
  * SiLU: x / (1 + exp(-x))
  */
 __device__ __forceinline__ float silu(float x) {
     return x / (1.0f + __expf(-x));
 }
 
-/**
- * SwiGLU kernel (vectorized)
- */
 template <typename T>
 __global__ void swiglu_kernel_vec(T *__restrict__ out,
                                   const T *__restrict__ gate,
                                   const T *__restrict__ up,
-                                  const size_t N) {
-    using Packed = typename PackedUtils<T>::PackedType;
-    constexpr int pack_size = PackedUtils<T>::pack_size;
+                                  size_t n) {
+    if constexpr (std::is_same_v<T, float>) {
+        // ---------------------------------------------------
+        // Float: Process 4 elements per thread (128-bit)
+        // ---------------------------------------------------
+        size_t idx = (blockIdx.x * blockDim.x + threadIdx.x) * 4;
 
-    // Number of full vector packs
-    const size_t num_packs = N / pack_size;
+        if (idx + 3 < n) {
+            // Vectorized Load
+            float4 g_vec = FLOAT4_CONST(gate[idx]);
+            float4 u_vec = FLOAT4_CONST(up[idx]);
+            float4 out_vec;
 
-    // Vector views
-    Packed *out_packed = reinterpret_cast<Packed *>(out);
-    const Packed *gate_packed = reinterpret_cast<const Packed *>(gate);
-    const Packed *up_packed = reinterpret_cast<const Packed *>(up);
+            // Vectorized Math: Compute components manually
+            out_vec.x = u_vec.x * silu(g_vec.x);
+            out_vec.y = u_vec.y * silu(g_vec.y);
+            out_vec.z = u_vec.z * silu(g_vec.z);
+            out_vec.w = u_vec.w * silu(g_vec.w);
 
-    const size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-    const size_t stride = static_cast<size_t>(blockDim.x) * gridDim.x;
-
-    // -------------------------
-    // Vectorized main loop
-    // -------------------------
-    for (size_t i = idx; i < num_packs; i += stride) {
-        Packed g_vec = gate_packed[i];
-        Packed u_vec = up_packed[i];
-        Packed r_vec;
-
-        // Treat packed data as scalar arrays
-        T *g_arr = reinterpret_cast<T *>(&g_vec);
-        T *u_arr = reinterpret_cast<T *>(&u_vec);
-        T *r_arr = reinterpret_cast<T *>(&r_vec);
-
-#pragma unroll
-        for (int k = 0; k < pack_size; ++k) {
-            float g_val = to_float(g_arr[k]);
-            float u_val = to_float(u_arr[k]);
-            float val = u_val * silu(g_val);
-            r_arr[k] = from_float<T>(val);
+            // Vectorized Store
+            FLOAT4(out[idx]) = out_vec;
+        } else if (idx < n) {
+            // Tail Handling
+            for (size_t i = idx; i < n; i++) {
+                out[i] = up[i] * silu(gate[i]);
+            }
         }
 
-        out_packed[i] = r_vec;
-    }
+    } else if constexpr (std::is_same_v<T, half>) {
+        // ---------------------------------------------------
+        // Half: Process 8 elements per thread (8 * 16-bit = 128-bit)
+        // ---------------------------------------------------
+        size_t idx = (blockIdx.x * blockDim.x + threadIdx.x) * 8;
 
-    // -------------------------
-    // Scalar tail loop
-    // -------------------------
-    const size_t processed = num_packs * pack_size;
+        if (idx + 7 < n) {
+            // Use float4 as a 128-bit container
+            float4 g_vec = FLOAT4_CONST(gate[idx]);
+            float4 u_vec = FLOAT4_CONST(up[idx]);
+            float4 out_vec;
 
-    for (size_t i = processed + idx; i < N; i += stride) {
-        float g_val = to_float(gate[i]);
-        float u_val = to_float(up[i]);
-        float val = u_val * silu(g_val);
-        out[i] = from_float<T>(val);
+            // Reinterpret cast: Treat 128-bit data as array of half2
+            const half2 *g_h2 = reinterpret_cast<const half2 *>(&g_vec);
+            const half2 *u_h2 = reinterpret_cast<const half2 *>(&u_vec);
+            half2 *out_h2 = reinterpret_cast<half2 *>(&out_vec);
+
+// SIMD Math loop (4 pairs of half2 = 8 elements)
+#pragma unroll
+            for (int k = 0; k < 4; ++k) {
+                // 由于标准库没有直接的 __hsilu2，通常先转为 float 计算以保证精度
+                float2 g_f2 = __half22float2(g_h2[k]);
+                float2 u_f2 = __half22float2(u_h2[k]);
+
+                float2 res_f2;
+                res_f2.x = u_f2.x * silu(g_f2.x);
+                res_f2.y = u_f2.y * silu(g_f2.y);
+
+                out_h2[k] = __float22half2_rn(res_f2);
+            }
+
+            FLOAT4(out[idx]) = out_vec;
+        } else if (idx < n) {
+            // Tail Handling
+            for (size_t i = idx; i < n; i++) {
+                float g_val = __half2float(gate[i]);
+                float u_val = __half2float(up[i]);
+                out[i] = __float2half(u_val * silu(g_val));
+            }
+        }
+
+    } else if constexpr (std::is_same_v<T, nv_bfloat16>) { // 注意: CUDA中通常用 nv_bfloat16
+        // ---------------------------------------------------
+        // Bfloat16: Process 8 elements per thread
+        // ---------------------------------------------------
+        size_t idx = (blockIdx.x * blockDim.x + threadIdx.x) * 8;
+
+        if (idx + 7 < n) {
+            float4 g_vec = FLOAT4_CONST(gate[idx]);
+            float4 u_vec = FLOAT4_CONST(up[idx]);
+            float4 out_vec;
+
+            // Reinterpret cast to bf16 vector type
+            const nv_bfloat162 *g_bf2 = reinterpret_cast<const nv_bfloat162 *>(&g_vec);
+            const nv_bfloat162 *u_bf2 = reinterpret_cast<const nv_bfloat162 *>(&u_vec);
+            nv_bfloat162 *out_bf2 = reinterpret_cast<nv_bfloat162 *>(&out_vec);
+
+// SIMD Math
+#pragma unroll
+            for (int k = 0; k < 4; ++k) {
+                // Convert to float for SiLU calculation
+                float2 g_f2 = __bfloat1622float2(g_bf2[k]);
+                float2 u_f2 = __bfloat1622float2(u_bf2[k]);
+
+                float2 res_f2;
+                res_f2.x = u_f2.x * silu(g_f2.x);
+                res_f2.y = u_f2.y * silu(g_f2.y);
+
+                out_bf2[k] = __float22bfloat162_rn(res_f2);
+            }
+
+            FLOAT4(out[idx]) = out_vec;
+        } else if (idx < n) {
+            // Tail Handling
+            for (size_t i = idx; i < n; i++) {
+                float g_val = __bfloat162float(gate[i]);
+                float u_val = __bfloat162float(up[i]);
+                out[i] = __float2bfloat16(u_val * silu(g_val));
+            }
+        }
     }
 }
 
@@ -136,28 +138,40 @@ __global__ void swiglu_kernel_naive(T *out, const T *gate, const T *up, const si
             const float up_v = up[idx];
             out[idx] = up_v * silu(gate_v);
         } else if constexpr (std::is_same_v<T, half>) {
-            const float gate_v = __half2float(gate[idx]);
-            const float up_v = __half2float(up[idx]);
-            out[idx] = __float2half(up_v * silu(gate_v));
+            const float gate_v = to_float(gate[idx]);
+            const float up_v = to_float(up[idx]);
+            out[idx] = from_float<half>(up_v * silu(gate_v));
         } else if constexpr (std::is_same_v<T, cuda_bfloat16>) {
-            const float gate_v = __bfloat162float(gate[idx]);
-            const float up_v = __bfloat162float(up[idx]);
-            out[idx] = __float2bfloat16(up_v * silu(gate_v));
+            const float gate_v = to_float(gate[idx]);
+            const float up_v = to_float(up[idx]);
+            out[idx] = from_float<cuda_bfloat16>(up_v * silu(gate_v));
         }
     }
 }
 
+template <typename T>
+void launch_swiglu_kernel(T *out, const T *gate, const T *up, const size_t N) {
+    // Determine packing size (4 for float, 8 for half/bf16)
+    constexpr size_t VEC_SIZE = PackedUtils<T>::pack_size;
+    dim3 block_dim(BLOCK_SIZE);
+
+    // Adjust grid size to account for vectorized processing
+    dim3 grid_dim(div_ceil(N, BLOCK_SIZE * VEC_SIZE));
+
+    swiglu_kernel_vec<<<grid_dim, block_dim>>>(out, gate, up, N);
+}
+
 void swiglu(std::byte *out, const std::byte *gate, const std::byte *up, llaisysDataType_t type, size_t numel) {
-    dim3 blockDim(BLOCK_SIZE);
-    dim3 gridDim(ceil_div(numel, BLOCK_SIZE));
+    // dim3 blockDim(BLOCK_SIZE);
+    // dim3 gridDim(div_ceil(numel, BLOCK_SIZE));
 
     switch (type) {
     case LLAISYS_DTYPE_F32:
-        return swiglu_kernel_naive<<<gridDim, blockDim>>>(reinterpret_cast<float *>(out), reinterpret_cast<const float *>(gate), reinterpret_cast<const float *>(up), numel);
+        return launch_swiglu_kernel(reinterpret_cast<float *>(out), reinterpret_cast<const float *>(gate), reinterpret_cast<const float *>(up), numel);
     case LLAISYS_DTYPE_F16:
-        return swiglu_kernel_naive<<<gridDim, blockDim>>>(reinterpret_cast<half *>(out), reinterpret_cast<const half *>(gate), reinterpret_cast<const half *>(up), numel);
+        return launch_swiglu_kernel(reinterpret_cast<half *>(out), reinterpret_cast<const half *>(gate), reinterpret_cast<const half *>(up), numel);
     case LLAISYS_DTYPE_BF16:
-        return swiglu_kernel_naive<<<gridDim, blockDim>>>(reinterpret_cast<cuda_bfloat16 *>(out), reinterpret_cast<const cuda_bfloat16 *>(gate), reinterpret_cast<const cuda_bfloat16 *>(up), numel);
+        return launch_swiglu_kernel(reinterpret_cast<cuda_bfloat16 *>(out), reinterpret_cast<const cuda_bfloat16 *>(gate), reinterpret_cast<const cuda_bfloat16 *>(up), numel);
     default:
         EXCEPTION_UNSUPPORTED_DATATYPE(type);
     }

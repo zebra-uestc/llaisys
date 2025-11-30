@@ -14,7 +14,7 @@ __device__ __forceinline__ T get_lowest_value() {
     if constexpr (std::is_same_v<T, float>) {
         return -CUDART_INF_F;
     } else if constexpr (std::is_same_v<T, half>) {
-        return __float2half(-65504.0f);
+        return __float2half(-CUDART_INF_F);
     } else if constexpr (std::is_same_v<T, cuda_bfloat16>) {
         return __float2bfloat16(-CUDART_INF_F);
     }
@@ -45,20 +45,6 @@ __host__ __device__ inline uint32_t unpack_idx(unsigned long long packed) {
     return (uint32_t)(packed & 0xffffffffu);
 }
 
-// Helper to convert T to float
-template <typename T>
-__device__ inline float to_float_val(const T &x) {
-    if constexpr (std::is_same_v<T, float>) {
-        return x;
-    } else if constexpr (std::is_same_v<T, half>) {
-        return __half2float(x);
-    } else if constexpr (std::is_same_v<T, cuda_bfloat16>) {
-        return __bfloat162float(x);
-    } else {
-        return static_cast<float>(x);
-    }
-}
-
 // Warp-only kernel
 template <typename T>
 __global__ void reduce_argmax_kernel_warp(unsigned long long *global_packed,
@@ -84,7 +70,7 @@ __global__ void reduce_argmax_kernel_warp(unsigned long long *global_packed,
     }
 
     // convert to float for shuffles/comparisons
-    float v = to_float_val<T>(thread_max_val_t);
+    float v = to_float<T>(thread_max_val_t);
     uint32_t idx = thread_max_idx;
 
     // warp-level reduce: shuffle float values and indices
@@ -170,7 +156,7 @@ reduce_argmax_kernel_warp_smem(unsigned long long *global_packed,
     }
 
     // warp-level reduce into (v, idx) using float
-    float v = to_float_val<T>(thread_max_val_t);
+    float v = to_float<T>(thread_max_val_t);
     uint32_t idx = thread_max_idx;
 
 #pragma unroll
@@ -188,7 +174,7 @@ reduce_argmax_kernel_warp_smem(unsigned long long *global_packed,
     if (lane_id == 0) {
         // if this warp had no valid idx, write lowest sentinel
         if (idx == UINT32_MAX) {
-            s_val[warp_id] = to_float_val<T>(get_lowest_value<T>());
+            s_val[warp_id] = to_float<T>(get_lowest_value<T>());
             s_idx[warp_id] = UINT32_MAX;
         } else {
             s_val[warp_id] = v;
@@ -200,7 +186,7 @@ reduce_argmax_kernel_warp_smem(unsigned long long *global_packed,
     // first warp reduces across warp results (only first 32 threads used)
     if (tid < 32) {
         unsigned num_warps = (blockDim.x + 31) / 32;
-        float block_v = to_float_val<T>(get_lowest_value<T>());
+        float block_v = to_float<T>(get_lowest_value<T>());
         uint32_t block_idx = UINT32_MAX;
         if (tid < num_warps) {
             block_v = s_val[tid];
@@ -236,44 +222,6 @@ reduce_argmax_kernel_warp_smem(unsigned long long *global_packed,
     }
 }
 
-__global__ void write_packed_result(unsigned long long *d_packed_res,
-                                    std::byte *d_max_idx,
-                                    std::byte *d_max_val,
-                                    llaisysDataType_t type) {
-    unsigned long long packed = *d_packed_res;
-
-    // unpack
-    float f_val = unpack_val(packed);
-    uint32_t idx = unpack_idx(packed);
-
-    // write index: host expects int64_t* originally
-    int64_t *idx_out = reinterpret_cast<int64_t *>(d_max_idx);
-    // store as 64-bit, safe: upper bits zeroed
-    *idx_out = static_cast<int64_t>(idx);
-
-    // write value according to type
-    switch (type) {
-    case LLAISYS_DTYPE_F32: {
-        float *out = reinterpret_cast<float *>(d_max_val);
-        *out = f_val;
-        break;
-    }
-    case LLAISYS_DTYPE_F16: {
-        half *out = reinterpret_cast<half *>(d_max_val);
-        *out = __float2half(f_val); // device conversion
-        break;
-    }
-    case LLAISYS_DTYPE_BF16: {
-        cuda_bfloat16 *out = reinterpret_cast<cuda_bfloat16 *>(d_max_val);
-        *out = __float2bfloat16(f_val); // device conversion (CUDA builtin)
-        break;
-    }
-    default:
-        // optionally write something or ignore
-        break;
-    }
-}
-
 void argmax(std::byte *max_idx, std::byte *max_val, const std::byte *vals, llaisysDataType_t type, size_t size) {
     dim3 block_dim(BLOCK_SIZE);
     dim3 grid_dim(BLOCK_SIZE);
@@ -296,6 +244,5 @@ void argmax(std::byte *max_idx, std::byte *max_val, const std::byte *vals, llais
     default:
         EXCEPTION_UNSUPPORTED_DATATYPE(type);
     }
-    // write_packed_result<<<1, 1>>>(d_packed_res, max_idx, max_val, type);
 }
 } // namespace llaisys::ops::nvidia

@@ -69,6 +69,7 @@ nav:
     - 算子列表: ops/list.md 
     - 算子实现:
       - CPU: ops/cpu.md
+      - NVIDIA: ops/nvidia.md
 
 # ------------------------------------------------------------
 # Plugins

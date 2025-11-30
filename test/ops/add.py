@@ -45,7 +45,7 @@ if __name__ == "__main__":
     parser.add_argument("--device", default="cpu", choices=["cpu", "nvidia"], type=str)
     parser.add_argument("--profile", action="store_true")
     args = parser.parse_args()
-    testShapes = [(2, 3), (512, 4096), (1, 1536)]
+    testShapes = [(1, 1536), (128, 1536), (1, 4096), (512, 4096), (1, 5120), (1024, 5120)]
     testDtypePrec = [
         # type, atol, rtol
         ("f32", 1e-5, 1e-5),

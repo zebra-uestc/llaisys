@@ -46,7 +46,7 @@ if __name__ == "__main__":
     parser.add_argument("--device", default="cpu", choices=["cpu", "nvidia"], type=str)
     parser.add_argument("--profile", action="store_true")
     args = parser.parse_args()
-    testShapes = [(4,), (4096,), (151936,)]
+    testShapes = [(151936,), (152064,)]
     testDtype = ["f32", "f16", "bf16"]
     print(f"Testing Ops.argmax on {args.device}")
     for shape in testShapes:

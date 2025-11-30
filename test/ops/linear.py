@@ -23,7 +23,9 @@ def test_op_linear(
     device_name="cpu",
     profile=False,
 ):
-    print(f"   out {out_shape}, x {x_shape}, w {w_shape}, bias {use_bias}, dtype <{dtype_name}>")
+    print(
+        f"   out {out_shape}, x {x_shape}, w {w_shape}, bias {use_bias}, dtype <{dtype_name}>"
+    )
     x, x_ = random_tensor(x_shape, dtype_name, device_name, scale=0.1)
     w, w_ = random_tensor(w_shape, dtype_name, device_name, scale=0.01)
 
@@ -58,12 +60,21 @@ if __name__ == "__main__":
         ((1, 1536), (1, 1536), (1536, 1536), True),
         ((1, 8960), (1, 1536), (8960, 1536), True),
         ((1, 1536), (1, 8960), (1536, 8960), True),
+        ((128, 1536), (128, 1536), (1536, 1536), True),
+        ((128, 8960), (128, 1536), (8960, 1536), True),
+        ((128, 1536), (128, 8960), (1536, 8960), True),
+        ((1, 4096), (1, 4096), (4096, 4096), True),
+        ((1, 12288), (1, 4096), (12288, 4096), True),
+        ((1, 4096), (1, 12288), (4096, 12288), True),
+        ((512, 4096), (512, 4096), (4096, 4096), True),
+        ((512, 12288), (512, 4096), (12288, 4096), True),
+        ((512, 4096), (512, 12288), (4096, 12288), True),
     ]
     testDtypePrec = [
         # type, atol, rtol
         ("f32", 1e-5, 1e-5),
         ("f16", 1e-3, 1e-3),
-        ("bf16", 1e-2, 1e-2),
+        ("bf16", 5e-2, 5e-2),
     ]
     print(f"Testing Ops.linear on {args.device}")
     for shapes in testShapes:

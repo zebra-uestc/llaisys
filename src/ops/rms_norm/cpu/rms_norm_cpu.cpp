@@ -21,10 +21,6 @@ void rms_norm_(T *out, const T *in, const T *weight, float eps, size_t nrow, siz
             std::vector<float> weight_f32(ncol);
             std::vector<float> out_f32(ncol);
 
-            // for (size_t j = 0; j < ncol; ++j) {
-            //     in_f32[j] = llaisys::utils::cast<float>(in_t[j]);
-            //     weight_f32[j] = llaisys::utils::cast<float>(weight[j]);
-            // }
             llaisys::utils::bf16_to_fp32_batch(in_f32.data(), in_t, ncol);
             llaisys::utils::bf16_to_fp32_batch(weight_f32.data(), weight, ncol);
 

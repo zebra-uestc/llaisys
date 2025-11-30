@@ -9,8 +9,6 @@
 
 #include <cuda_runtime.h>
 
-#define likely(x) __builtin_expect(!!(x), 1)
-#define unlikely(x) __builtin_expect(!!(x), 0)
 
 namespace llaisys::ops::nvidia {
 void linear(std::byte *out, const std::byte *in, const std::byte *weight, const std::byte *bias, llaisysDataType_t type, size_t nrow, size_t ncol_out, size_t ncol_in) {
@@ -27,8 +25,8 @@ void linear(std::byte *out, const std::byte *in, const std::byte *weight, const 
             return matvec_kernel_warp_vec<<<gridDim, blockDim>>>(reinterpret_cast<float *>(out), reinterpret_cast<const float *>(in), reinterpret_cast<const float *>(weight), reinterpret_cast<const float *>(bias), N, K);
         } else {
             dim3 gridDim;
-            gridDim.y = ceil_div(M, 128);
-            gridDim.x = ceil_div(N, 128);
+            gridDim.y = div_ceil(M, 128);
+            gridDim.x = div_ceil(N, 128);
             return linear_fp32_kernel<<<gridDim, blockDim>>>(reinterpret_cast<float *>(out), reinterpret_cast<const float *>(in), reinterpret_cast<const float *>(weight), reinterpret_cast<const float *>(bias), M, N, K);
         }
         break;
@@ -45,8 +43,8 @@ void linear(std::byte *out, const std::byte *in, const std::byte *weight, const 
             cudaFuncSetAttribute(linear_fp16_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size);
 
             dim3 gridDim;
-            gridDim.y = ceil_div(M, BM);
-            gridDim.x = ceil_div(N, BN);
+            gridDim.y = div_ceil(M, BM);
+            gridDim.x = div_ceil(N, BN);
             return linear_fp16_kernel<<<gridDim, blockDim, smem_size>>>(reinterpret_cast<half *>(out), reinterpret_cast<const half *>(in), reinterpret_cast<const half *>(weight), reinterpret_cast<const half *>(bias), M, N, K);
         }
         break;
@@ -63,8 +61,8 @@ void linear(std::byte *out, const std::byte *in, const std::byte *weight, const 
             cudaFuncSetAttribute(linear_bf16_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size);
 
             dim3 gridDim;
-            gridDim.y = ceil_div(M, 128);
-            gridDim.x = ceil_div(N, 256);
+            gridDim.y = div_ceil(M, BM);
+            gridDim.x = div_ceil(N, BN);
             return linear_bf16_kernel<<<gridDim, blockDim, smem_size>>>(reinterpret_cast<cuda_bfloat16 *>(out), reinterpret_cast<const cuda_bfloat16 *>(in), reinterpret_cast<const cuda_bfloat16 *>(weight), reinterpret_cast<const cuda_bfloat16 *>(bias), M, N, K);
         }
         break;

@@ -2,8 +2,6 @@
 
 #include "../../../device/nvidia/nvidia_common.cuh"
 
-#define FLOAT4_CONST(value) (reinterpret_cast<const float4 *>(&(value))[0])
-
 __global__ void matvec_kernel_warp(float *c, const float *a, const float *B, const float *bias, const size_t N, const size_t K) {
     size_t bid = blockIdx.x;
     __shared__ float smem[BLOCK_SIZE / WARP_SIZE];
@@ -37,50 +35,6 @@ __global__ void matvec_kernel_warp(float *c, const float *a, const float *B, con
         }
         __syncthreads();
     }
-}
-
-// Load 128-bit data as float4 and compute dot product
-template <typename T>
-__device__ __forceinline__ float vec128_dot(const T *a, const T *b);
-
-// Specialization for float: 4 elements per float4
-template <>
-__device__ __forceinline__ float vec128_dot<float>(const float *a, const float *b) {
-    float4 a_vec = *reinterpret_cast<const float4 *>(a);
-    float4 b_vec = *reinterpret_cast<const float4 *>(b);
-    return a_vec.x * b_vec.x + a_vec.y * b_vec.y + a_vec.z * b_vec.z + a_vec.w * b_vec.w;
-}
-
-// Specialization for half: 8 elements per float4
-template <>
-__device__ __forceinline__ float vec128_dot<half>(const half *a, const half *b) {
-    float4 a_vec = *reinterpret_cast<const float4 *>(a);
-    float4 b_vec = *reinterpret_cast<const float4 *>(b);
-    const half *a_h = reinterpret_cast<const half *>(&a_vec);
-    const half *b_h = reinterpret_cast<const half *>(&b_vec);
-
-    float sum = 0.0f;
-#pragma unroll
-    for (int i = 0; i < 8; ++i) {
-        sum += __half2float(a_h[i]) * __half2float(b_h[i]);
-    }
-    return sum;
-}
-
-// Specialization for bfloat16: 8 elements per float4
-template <>
-__device__ __forceinline__ float vec128_dot<cuda_bfloat16>(const cuda_bfloat16 *a, const cuda_bfloat16 *b) {
-    float4 a_vec = *reinterpret_cast<const float4 *>(a);
-    float4 b_vec = *reinterpret_cast<const float4 *>(b);
-    const cuda_bfloat16 *a_bf = reinterpret_cast<const cuda_bfloat16 *>(&a_vec);
-    const cuda_bfloat16 *b_bf = reinterpret_cast<const cuda_bfloat16 *>(&b_vec);
-
-    float sum = 0.0f;
-#pragma unroll
-    for (int i = 0; i < 8; ++i) {
-        sum += __bfloat162float(a_bf[i]) * __bfloat162float(b_bf[i]);
-    }
-    return sum;
 }
 
 // Warp-based matvec kernel with vectorized loads

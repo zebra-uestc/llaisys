@@ -8,7 +8,7 @@
 #endif
 
 #ifndef PARALLEL_THRESHOLD
-#define PARALLEL_THRESHOLD 4096 // Below this: use single-threaded SIMD
+#define PARALLEL_THRESHOLD 16384 // Below this: use single-threaded SIMD
 #endif
 
 // Force inline to eliminate function call overhead

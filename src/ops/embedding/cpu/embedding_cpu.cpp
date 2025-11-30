@@ -5,13 +5,18 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <omp.h>
 
 template <typename T>
 void embedding_(T *out, const int64_t *index, const T *weight, size_t numel, size_t len) {
     const size_t nlen = numel / len;
 
-    // Avoid OpenMP for memory-bound operations;
-    // single-threaded memcpy is faster due to CPU optimizations (SIMD/prefetch) and avoids thread scheduling overhead.
+    // Threshold to avoid threading overhead on small workloads
+    const bool use_omp = nlen > 64;
+
+// Parallelize to hide memory latency from random access (gather pattern).
+// 'static' schedule is optimal due to uniform copy sizes.
+#pragma omp parallel for schedule(static) if (use_omp)
     for (size_t i = 0; i < nlen; ++i) {
         const int64_t idx = index[i];
         std::memcpy(out + (i * len), weight + (idx * len), len * sizeof(T));

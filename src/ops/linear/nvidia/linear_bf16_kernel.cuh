@@ -5,11 +5,6 @@
 
 using namespace nvcuda;
 
-// Helper macros
-#define OFFSET(row, col, stride) ((row) * (stride) + (col))
-#define FLOAT4(pointer) (reinterpret_cast<float4 *>(&(pointer))[0])
-#define CONST_FLOAT4(pointer) (reinterpret_cast<const float4 *>(&(pointer))[0])
-
 /**
  * HGEMM Kernel with:
  * 1. Non-aligned M, N, K support (boundary handling)
@@ -168,7 +163,7 @@ __global__ void linear_bf16_kernel(
         __syncthreads();
     }
 
-    int num_k_tiles = ceil_div(K, BK);
+    int num_k_tiles = div_ceil(K, BK);
 
     for (int bk = 1; bk < num_k_tiles; bk++) {
         int k_start = bk * BK;

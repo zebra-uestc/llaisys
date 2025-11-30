@@ -7,14 +7,8 @@
 
 namespace llaisys::ops::nvidia {
 
-// ============================================================================
 // Constants
-// ============================================================================
 constexpr int TILE_KV = 256;
-constexpr int NUM_WARPS = BLOCK_SIZE / WARP_SIZE;
-
-#define likely(x) __builtin_expect(!!(x), 1)
-#define unlikely(x) __builtin_expect(!!(x), 0)
 
 // ============================================================================
 // Warp-level Reduction

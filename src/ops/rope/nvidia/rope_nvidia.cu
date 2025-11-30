@@ -7,10 +7,10 @@
 #include <cuda_runtime.h>
 
 // ============================================================================
-// RoPE Kernel v1: Basic version - one thread per (seq, head, dim_pair)
+// RoPE Kernel : Basic version - one thread per (seq, head, dim_pair)
 // ============================================================================
 template <typename T>
-__global__ void rope_kernel_v1(
+__global__ void rope_kernel(
     T *__restrict__ out,
     const T *__restrict__ in,
     const int64_t *__restrict__ pos_ids,
@@ -58,15 +58,15 @@ namespace llaisys::ops::nvidia {
 void rope(std::byte *out, const std::byte *in, const std::byte *pos_ids, float theta, llaisysDataType_t type, size_t seqlen, size_t nhead, size_t d) {
     const size_t numel = seqlen * nhead * d / 2;
     dim3 blockDim(BLOCK_SIZE);
-    dim3 gridDim(ceil_div(numel, BLOCK_SIZE));
+    dim3 gridDim(div_ceil(numel, BLOCK_SIZE));
 
     switch (type) {
     case LLAISYS_DTYPE_F32:
-        return rope_kernel_v1<<<gridDim, blockDim>>>(reinterpret_cast<float *>(out), reinterpret_cast<const float *>(in), reinterpret_cast<const int64_t *>(pos_ids), theta, seqlen, nhead, d);
+        return rope_kernel<<<gridDim, blockDim>>>(reinterpret_cast<float *>(out), reinterpret_cast<const float *>(in), reinterpret_cast<const int64_t *>(pos_ids), theta, seqlen, nhead, d);
     case LLAISYS_DTYPE_F16:
-        return rope_kernel_v1<<<gridDim, blockDim>>>(reinterpret_cast<half *>(out), reinterpret_cast<const half *>(in), reinterpret_cast<const int64_t *>(pos_ids), theta, seqlen, nhead, d);
+        return rope_kernel<<<gridDim, blockDim>>>(reinterpret_cast<half *>(out), reinterpret_cast<const half *>(in), reinterpret_cast<const int64_t *>(pos_ids), theta, seqlen, nhead, d);
     case LLAISYS_DTYPE_BF16:
-        return rope_kernel_v1<<<gridDim, blockDim>>>(reinterpret_cast<cuda_bfloat16 *>(out), reinterpret_cast<const cuda_bfloat16 *>(in), reinterpret_cast<const int64_t *>(pos_ids), theta, seqlen, nhead, d);
+        return rope_kernel<<<gridDim, blockDim>>>(reinterpret_cast<cuda_bfloat16 *>(out), reinterpret_cast<const cuda_bfloat16 *>(in), reinterpret_cast<const int64_t *>(pos_ids), theta, seqlen, nhead, d);
     default:
         EXCEPTION_UNSUPPORTED_DATATYPE(type);
     }
