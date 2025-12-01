@@ -1,6 +1,6 @@
 # LLAISYS（Let's Learn AI SYStem）
 
-本项目源自 [启元人工智能训练营 · 大模型推理框架方向](https://beta.infinitensor.com/camp/summer2025/stage/1/course/llm-inference-and-serving-system) 的课程作业，旨在帮助初学者从零构建大模型推理系统。当前版本已实现基础功能，并作为新推理框架 [neollm]() 的试验平台，主要用于：
+本项目源自 [启元人工智能训练营 · 大模型推理框架方向](https://beta.infinitensor.com/camp/summer2025/stage/1/course/llm-inference-and-serving-system) 的课程作业，旨在帮助初学者从零构建大模型推理系统。当前版本已实现基础功能，并作为新推理框架 [zedinfer](https://github.com/zebra-uestc/zedinfer) 的试验平台，主要用于：
 
 - 验证自定义算子实现的**正确性**（与 Hugging Face 推理结果对齐）  
 - 评估自定义算子的**性能**

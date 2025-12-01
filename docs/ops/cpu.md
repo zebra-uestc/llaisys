@@ -146,133 +146,159 @@ Test passed!
 ## Linear
 ```bash
 Testing Ops.linear on cpu
-   out (2, 3), x (2, 4), w (3, 4), bias True, dtype <f32>
-        Torch time: 0.00648 ms
-        LLAISYS time: 0.02585 ms
-   out (2, 3), x (2, 4), w (3, 4), bias True, dtype <f16>
-        Torch time: 0.01172 ms
-        LLAISYS time: 0.02055 ms
-   out (2, 3), x (2, 4), w (3, 4), bias True, dtype <bf16>
-        Torch time: 0.01145 ms
-        LLAISYS time: 0.02000 ms
-   out (512, 4096), x (512, 4096), w (4096, 4096), bias True, dtype <f32>
-        Torch time: 14.04708 ms
-        LLAISYS time: 15.77965 ms
-   out (512, 4096), x (512, 4096), w (4096, 4096), bias True, dtype <f16>
-        Torch time: 100.69306 ms
-        LLAISYS time: 77.08914 ms
-   out (512, 4096), x (512, 4096), w (4096, 4096), bias True, dtype <bf16>
-        Torch time: 60.30512 ms
-        LLAISYS time: 81.89152 ms
    out (1, 1536), x (1, 1536), w (1536, 1536), bias True, dtype <f32>
-        Torch time: 0.03150 ms
-        LLAISYS time: 0.02055 ms
+        Torch time: 0.03361 ms
+        LLAISYS time: 0.01900 ms
    out (1, 1536), x (1, 1536), w (1536, 1536), bias True, dtype <f16>
-        Torch time: 0.05552 ms
-        LLAISYS time: 1.97409 ms
+        Torch time: 0.06082 ms
+        LLAISYS time: 1.57289 ms
    out (1, 1536), x (1, 1536), w (1536, 1536), bias True, dtype <bf16>
-        Torch time: 5.52066 ms
-        LLAISYS time: 1.74603 ms
+        Torch time: 0.04559 ms
+        LLAISYS time: 1.56664 ms
    out (1, 8960), x (1, 1536), w (8960, 1536), bias True, dtype <f32>
-        Torch time: 0.33603 ms
-        LLAISYS time: 0.32509 ms
+        Torch time: 0.29750 ms
+        LLAISYS time: 0.28915 ms
    out (1, 8960), x (1, 1536), w (8960, 1536), bias True, dtype <f16>
-        Torch time: 0.24503 ms
-        LLAISYS time: 39.74828 ms
+        Torch time: 0.21772 ms
+        LLAISYS time: 34.62622 ms
    out (1, 8960), x (1, 1536), w (8960, 1536), bias True, dtype <bf16>
-        Torch time: 0.19489 ms
-        LLAISYS time: 39.73993 ms
+        Torch time: 0.19600 ms
+        LLAISYS time: 36.17344 ms
    out (1, 1536), x (1, 8960), w (1536, 8960), bias True, dtype <f32>
-        Torch time: 0.30131 ms
-        LLAISYS time: 0.29183 ms
+        Torch time: 0.28882 ms
+        LLAISYS time: 0.28607 ms
    out (1, 1536), x (1, 8960), w (1536, 8960), bias True, dtype <f16>
-        Torch time: 0.25232 ms
-        LLAISYS time: 37.83597 ms
+        Torch time: 0.22915 ms
+        LLAISYS time: 34.99666 ms
    out (1, 1536), x (1, 8960), w (1536, 8960), bias True, dtype <bf16>
-        Torch time: 4.24978 ms
-        LLAISYS time: 39.58697 ms
+        Torch time: 0.17964 ms
+        LLAISYS time: 33.93682 ms
    out (128, 1536), x (128, 1536), w (1536, 1536), bias True, dtype <f32>
-        Torch time: 0.59083 ms
-        LLAISYS time: 0.78103 ms
+        Torch time: 0.56798 ms
+        LLAISYS time: 0.78859 ms
    out (128, 1536), x (128, 1536), w (1536, 1536), bias True, dtype <f16>
-        Torch time: 3.91532 ms
-        LLAISYS time: 2.73151 ms
+        Torch time: 3.84477 ms
+        LLAISYS time: 2.64170 ms
    out (128, 1536), x (128, 1536), w (1536, 1536), bias True, dtype <bf16>
-        Torch time: 2.17678 ms
-        LLAISYS time: 2.68255 ms
+        Torch time: 2.34522 ms
+        LLAISYS time: 2.54400 ms
    out (128, 8960), x (128, 1536), w (8960, 1536), bias True, dtype <f32>
-        Torch time: 9.00348 ms
-        LLAISYS time: 4.38465 ms
+        Torch time: 3.07649 ms
+        LLAISYS time: 4.30245 ms
    out (128, 8960), x (128, 1536), w (8960, 1536), bias True, dtype <f16>
-        Torch time: 26.22367 ms
-        LLAISYS time: 49.72974 ms
+        Torch time: 23.59190 ms
+        LLAISYS time: 42.73773 ms
    out (128, 8960), x (128, 1536), w (8960, 1536), bias True, dtype <bf16>
-        Torch time: 19.78453 ms
-        LLAISYS time: 45.50789 ms
+        Torch time: 15.30035 ms
+        LLAISYS time: 45.11836 ms
    out (128, 1536), x (128, 8960), w (1536, 8960), bias True, dtype <f32>
-        Torch time: 3.00326 ms
-        LLAISYS time: 3.68218 ms
+        Torch time: 3.09185 ms
+        LLAISYS time: 3.80646 ms
    out (128, 1536), x (128, 8960), w (1536, 8960), bias True, dtype <f16>
-        Torch time: 20.72079 ms
-        LLAISYS time: 41.66163 ms
+        Torch time: 24.33968 ms
+        LLAISYS time: 48.82042 ms
    out (128, 1536), x (128, 8960), w (1536, 8960), bias True, dtype <bf16>
-        Torch time: 12.54653 ms
-        LLAISYS time: 39.94967 ms
+        Torch time: 15.37450 ms
+        LLAISYS time: 45.82588 ms
    out (1, 4096), x (1, 4096), w (4096, 4096), bias True, dtype <f32>
-        Torch time: 0.43818 ms
-        LLAISYS time: 0.44445 ms
+        Torch time: 4.96520 ms
+        LLAISYS time: 0.48969 ms
    out (1, 4096), x (1, 4096), w (4096, 4096), bias True, dtype <f16>
-        Torch time: 0.21999 ms
-        LLAISYS time: 44.09353 ms
+        Torch time: 0.22523 ms
+        LLAISYS time: 45.14448 ms
    out (1, 4096), x (1, 4096), w (4096, 4096), bias True, dtype <bf16>
-        Torch time: 0.22669 ms
-        LLAISYS time: 44.41967 ms
+        Torch time: 0.21774 ms
+        LLAISYS time: 44.73020 ms
    out (1, 12288), x (1, 4096), w (12288, 4096), bias True, dtype <f32>
-        Torch time: 2.53126 ms
-        LLAISYS time: 2.39524 ms
+        Torch time: 2.83935 ms
+        LLAISYS time: 3.07710 ms
    out (1, 12288), x (1, 4096), w (12288, 4096), bias True, dtype <f16>
-        Torch time: 0.96195 ms
-        LLAISYS time: 129.10251 ms
+        Torch time: 1.23924 ms
+        LLAISYS time: 137.01032 ms
    out (1, 12288), x (1, 4096), w (12288, 4096), bias True, dtype <bf16>
-        Torch time: 1.10616 ms
-        LLAISYS time: 128.09046 ms
+        Torch time: 1.22400 ms
+        LLAISYS time: 136.92062 ms
    out (1, 4096), x (1, 12288), w (4096, 12288), bias True, dtype <f32>
-        Torch time: 3.16014 ms
-        LLAISYS time: 3.27317 ms
+        Torch time: 4.28824 ms
+        LLAISYS time: 11.54811 ms
    out (1, 4096), x (1, 12288), w (4096, 12288), bias True, dtype <f16>
-        Torch time: 1.24868 ms
-        LLAISYS time: 132.19068 ms
+        Torch time: 0.97658 ms
+        LLAISYS time: 130.72597 ms
    out (1, 4096), x (1, 12288), w (4096, 12288), bias True, dtype <bf16>
-        Torch time: 2.76618 ms
-        LLAISYS time: 132.62828 ms
+        Torch time: 1.32715 ms
+        LLAISYS time: 129.38635 ms
    out (512, 4096), x (512, 4096), w (4096, 4096), bias True, dtype <f32>
-        Torch time: 16.28651 ms
-        LLAISYS time: 19.26332 ms
+        Torch time: 14.25879 ms
+        LLAISYS time: 14.06091 ms
    out (512, 4096), x (512, 4096), w (4096, 4096), bias True, dtype <f16>
-        Torch time: 110.08841 ms
-        LLAISYS time: 81.61504 ms
+        Torch time: 108.16152 ms
+        LLAISYS time: 63.04230 ms
    out (512, 4096), x (512, 4096), w (4096, 4096), bias True, dtype <bf16>
-        Torch time: 62.56967 ms
-        LLAISYS time: 77.58017 ms
+        Torch time: 56.59506 ms
+        LLAISYS time: 64.24726 ms
    out (512, 12288), x (512, 4096), w (12288, 4096), bias True, dtype <f32>
-        Torch time: 68.13789 ms
-        LLAISYS time: 45.01108 ms
+        Torch time: 61.88507 ms
+        LLAISYS time: 47.41931 ms
    out (512, 12288), x (512, 4096), w (12288, 4096), bias True, dtype <f16>
-        Torch time: 293.34185 ms
-        LLAISYS time: 177.92957 ms
+        Torch time: 343.00961 ms
+        LLAISYS time: 211.98854 ms
    out (512, 12288), x (512, 4096), w (12288, 4096), bias True, dtype <bf16>
-        Torch time: 163.96168 ms
-        LLAISYS time: 189.57881 ms
+        Torch time: 174.88398 ms
+        LLAISYS time: 182.13484 ms
    out (512, 4096), x (512, 12288), w (4096, 12288), bias True, dtype <f32>
-        Torch time: 42.86984 ms
-        LLAISYS time: 51.26665 ms
+        Torch time: 39.11919 ms
+        LLAISYS time: 41.88408 ms
    out (512, 4096), x (512, 12288), w (4096, 12288), bias True, dtype <f16>
-        Torch time: 324.15250 ms
-        LLAISYS time: 177.71885 ms
+        Torch time: 309.32579 ms
+        LLAISYS time: 212.45988 ms
    out (512, 4096), x (512, 12288), w (4096, 12288), bias True, dtype <bf16>
-        Torch time: 153.70608 ms
-        LLAISYS time: 179.06548 ms
-Test passed!
+        Torch time: 193.40550 ms
+        LLAISYS time: 222.96064 ms
+   out (1, 5120), x (1, 5120), w (5120, 5120), bias True, dtype <f32>
+        Torch time: 0.98204 ms
+        LLAISYS time: 0.84421 ms
+   out (1, 5120), x (1, 5120), w (5120, 5120), bias True, dtype <f16>
+        Torch time: 0.40913 ms
+        LLAISYS time: 68.30993 ms
+   out (1, 5120), x (1, 5120), w (5120, 5120), bias True, dtype <bf16>
+        Torch time: 0.38231 ms
+        LLAISYS time: 67.38297 ms
+   out (1, 27648), x (1, 5120), w (27648, 5120), bias True, dtype <f32>
+        Torch time: 7.78060 ms
+        LLAISYS time: 7.25434 ms
+   out (1, 27648), x (1, 5120), w (27648, 5120), bias True, dtype <f16>
+        Torch time: 3.11443 ms
+        LLAISYS time: 359.53287 ms
+   out (1, 27648), x (1, 5120), w (27648, 5120), bias True, dtype <bf16>
+        Torch time: 5.79628 ms
+        LLAISYS time: 366.67006 ms
+   out (1, 5120), x (1, 27648), w (5120, 27648), bias True, dtype <f32>
+        Torch time: 5.26121 ms
+        LLAISYS time: 5.34323 ms
+   out (1, 5120), x (1, 27648), w (5120, 27648), bias True, dtype <f16>
+        Torch time: 2.87167 ms
+        LLAISYS time: 369.14826 ms
+   out (1, 5120), x (1, 27648), w (5120, 27648), bias True, dtype <bf16>
+        Torch time: 2.97650 ms
+        LLAISYS time: 358.56265 ms
+   out (1024, 5120), x (1024, 5120), w (5120, 5120), bias True, dtype <f32>
+        Torch time: 45.56138 ms
+        LLAISYS time: 51.91351 ms
+   out (1024, 5120), x (1024, 5120), w (5120, 5120), bias True, dtype <f16>
+        Torch time: 375.08587 ms
+        LLAISYS time: 155.66170 ms
+   out (1024, 5120), x (1024, 5120), w (5120, 5120), bias True, dtype <bf16>
+        Torch time: 174.48737 ms
+        LLAISYS time: 123.31779 ms
+   out (1024, 27648), x (1024, 5120), w (27648, 5120), bias True, dtype <f32>
+        Torch time: 216.18288 ms
+        LLAISYS time: 265.72510 ms
+   out (1024, 27648), x (1024, 5120), w (27648, 5120), bias True, dtype <f16>
+        Torch time: 1675.24603 ms
+        LLAISYS time: 661.32040 ms
+   out (1024, 27648), x (1024, 5120), w (27648, 5120), bias True, dtype <bf16>
+        Torch time: 928.39165 ms
+        LLAISYS time: 667.72926 ms
 ```
 
 ## RMS Norm
