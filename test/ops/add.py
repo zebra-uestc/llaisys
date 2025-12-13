@@ -5,7 +5,7 @@ parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, parent_dir)
 import llaisys
 import torch
-from test_utils import random_tensor, check_equal, benchmark
+from test_utils import random_tensor, check_equal, benchmark, random_int_tensor
 
 
 def torch_add(ans, a, b):
@@ -21,10 +21,16 @@ def test_op_add(
     profile=False,
 ):
     print(f"   shape {shape} dtype <{dtype_name}>")
-    a, a_ = random_tensor(shape, dtype_name, device_name)
-    b, b_ = random_tensor(shape, dtype_name, device_name)
+    if dtype_name != "i8":
+        a, a_ = random_tensor(shape, dtype_name, device_name)
+        b, b_ = random_tensor(shape, dtype_name, device_name)
 
-    c, c_ = random_tensor(shape, dtype_name, device_name)
+        c, c_ = random_tensor(shape, dtype_name, device_name)
+    else:
+        a, a_ = random_int_tensor(shape, device_name, "i8", low=-128, high=127)
+        b, b_ = random_int_tensor(shape, device_name, "i8", low=-128, high=127)
+
+        c, c_ = random_int_tensor(shape, device_name, "i8", low=-128, high=127)
     torch_add(c, a, b)
     llaisys.Ops.add(c_, a_, b_)
 
@@ -51,6 +57,7 @@ if __name__ == "__main__":
         ("f32", 1e-5, 1e-5),
         ("f16", 1e-3, 1e-3),
         ("bf16", 1e-2, 1e-2),
+        ("i8", 0, 0),
     ]
     print(f"Testing Ops.add on {args.device}")
     for shape in testShapes:

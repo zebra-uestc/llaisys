@@ -229,6 +229,8 @@ def torch_dtype(dtype_name: str):
         return torch.uint64
     elif dtype_name == "bool":
         return torch.bool
+    elif dtype_name == "i8":
+        return torch.int8
     else:
         raise ValueError(f"Unsupported dtype name: {dtype_name}")
 
@@ -252,6 +254,8 @@ def llaisys_dtype(dtype_name: str):
         return llaisys.DataType.U64
     elif dtype_name == "bool":
         return llaisys.DataType.BOOL
+    elif dtype_name == "i8":
+        return llaisys.DataType.I8
     else:
         raise ValueError(f"Unsupported dtype name: {dtype_name}")
 
@@ -275,5 +279,7 @@ def dtype_name(llaisys_dtype: llaisys.DataType):
         return "u64"
     elif llaisys_dtype == llaisys.DataType.BOOL:
         return "bool"
+    elif llaisys_dtype == llaisys.DataType.I8:
+        return "i8"
     else:
         raise ValueError(f"Unsupported llaisys dtype: {llaisys_dtype}")
