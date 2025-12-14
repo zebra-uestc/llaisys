@@ -4,3 +4,5 @@ void add_bf16(llaisys::bf16_t *c, const llaisys::bf16_t *a, const llaisys::bf16_
 void add_f16(llaisys::fp16_t *c, const llaisys::fp16_t *a, const llaisys::fp16_t *b, size_t numel);
 void add_f32(float *c, const float *a, const float *b, size_t numel);
 void add_i8(int8_t *c, const int8_t *a, const int8_t *b, size_t numel);
+void add_f8a(llaisys::f8a_t *c, const llaisys::f8a_t *a, const llaisys::f8a_t *b, size_t numel);
+void add_f8b(llaisys::f8b_t *c, const llaisys::f8b_t *a, const llaisys::f8b_t *b, size_t numel);

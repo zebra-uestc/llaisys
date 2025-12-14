@@ -417,3 +417,39 @@ void add_f32(float *c, const float *a, const float *b, size_t numel) {
     }
 #endif
 }
+
+void add_f8a(llaisys::f8a_t *c, const llaisys::f8a_t *a, const llaisys::f8a_t *b, size_t numel) {
+    // Convert f8a to fp32, perform addition, convert back to f8a
+    float *a_fp32 = new float[numel];
+    float *b_fp32 = new float[numel];
+    float *c_fp32 = new float[numel];
+
+    llaisys::utils::f8a_to_fp32_batch(a_fp32, a, numel);
+    llaisys::utils::f8a_to_fp32_batch(b_fp32, b, numel);
+
+    add_f32(c_fp32, a_fp32, b_fp32, numel);
+
+    llaisys::utils::fp32_to_f8a_batch(c, c_fp32, numel);
+
+    delete[] a_fp32;
+    delete[] b_fp32;
+    delete[] c_fp32;
+}
+
+void add_f8b(llaisys::f8b_t *c, const llaisys::f8b_t *a, const llaisys::f8b_t *b, size_t numel) {
+    // Convert f8b to fp32, perform addition, convert back to f8b
+    float *a_fp32 = new float[numel];
+    float *b_fp32 = new float[numel];
+    float *c_fp32 = new float[numel];
+
+    llaisys::utils::f8b_to_fp32_batch(a_fp32, a, numel);
+    llaisys::utils::f8b_to_fp32_batch(b_fp32, b, numel);
+
+    add_f32(c_fp32, a_fp32, b_fp32, numel);
+
+    llaisys::utils::fp32_to_f8b_batch(c, c_fp32, numel);
+
+    delete[] a_fp32;
+    delete[] b_fp32;
+    delete[] c_fp32;
+}
