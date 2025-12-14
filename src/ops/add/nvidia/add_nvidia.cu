@@ -105,6 +105,34 @@ __global__ void add_kernel_vec(T *c, const T *a, const T *b, size_t n) {
                 c[i] = __hadd(a[i], b[i]);
             }
         }
+    } else if constexpr (std::is_same_v<T, int8_t>) {
+        // Int8: Process 16 elements per thread (16 * 8-bit = 128-bit)
+        size_t idx = (blockIdx.x * blockDim.x + threadIdx.x) * 16;
+
+        if (idx + 15 < n) {
+            // Use int4 as a 128-bit container for memory access
+            int4 a_vec = INT4_CONST(a[idx]);
+            int4 b_vec = INT4_CONST(b[idx]);
+            int4 c_vec;
+
+            // Reinterpret cast: Treat 128-bit data as array of int8_t[16]
+            int8_t *a_i8 = reinterpret_cast<int8_t *>(&a_vec);
+            int8_t *b_i8 = reinterpret_cast<int8_t *>(&b_vec);
+            int8_t *c_i8 = reinterpret_cast<int8_t *>(&c_vec);
+
+            // SIMD-like Math: Perform element-wise addition
+            #pragma unroll
+            for (int i = 0; i < 16; i++) {
+                c_i8[i] = a_i8[i] + b_i8[i];
+            }
+
+            INT4(c[idx]) = c_vec;
+        } else if (idx < n) {
+            // Tail Handling
+            for (size_t i = idx; i < n; i++) {
+                c[i] = a[i] + b[i];
+            }
+        }
     }
 }
 
@@ -130,6 +158,9 @@ void add(std::byte *c, const std::byte *a, const std::byte *b, llaisysDataType_t
     case LLAISYS_DTYPE_F16:
         return launch_add_kernel(reinterpret_cast<half *>(c), reinterpret_cast<const half *>(a),
                                  reinterpret_cast<const half *>(b), numel);
+    case LLAISYS_DTYPE_I8:
+        return launch_add_kernel(reinterpret_cast<int8_t *>(c), reinterpret_cast<const int8_t *>(a),
+                                 reinterpret_cast<const int8_t *>(b), numel);
     default:
         EXCEPTION_UNSUPPORTED_DATATYPE(type);
     }

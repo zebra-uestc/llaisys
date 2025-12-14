@@ -45,6 +45,8 @@
 #define FLOAT4_CONST(value) (reinterpret_cast<const float4 *>(&(value))[0])
 #define LDST128BITS(value) (reinterpret_cast<float4 *>(&(value))[0])
 #define LD128BITS_CONST(value) (reinterpret_cast<const float4 *>(&(value))[0])
+#define INT4(value) (reinterpret_cast<int4 *>(&(value))[0])
+#define INT4_CONST(value) (reinterpret_cast<const int4 *>(&(value))[0])
 
 using cuda_bfloat16 = nv_bfloat16;
 using cuda_bfloat162 = nv_bfloat162;
@@ -79,6 +81,13 @@ template <>
 struct PackedUtils<cuda_bfloat16> {
     using PackedType = float4;
     static constexpr int pack_size = 8;
+};
+
+// INT8: 1 int4 = 16 int8s
+template <>
+struct PackedUtils<int8_t> {
+    using PackedType = int4;
+    static constexpr int pack_size = 16;
 };
 
 // ============================================================================
