@@ -84,6 +84,52 @@ bf16_t _f32_to_bf16(float val) {
     return bf16_t{bf16_bits};
 }
 
+float _fp8_e5m2_to_fp32(f8a_t x) {
+    return FP8_E5M2_LUT[x._v];
+}
+
+f8a_t _fp32_to_fp8_e5m2(float x) {
+    if (x <= 0.0f) {
+        return f8a_t{0};
+    }
+
+    uint8_t best_index = 0;
+    float smallest_diff = std::fabs(x - FP8_E5M2_LUT[0]);
+
+    for (uint16_t i = 1; i < 256; ++i) {
+        float diff = std::fabs(x - FP8_E5M2_LUT[i]);
+        if (diff < smallest_diff) {
+            smallest_diff = diff;
+            best_index = static_cast<uint8_t>(i);
+        }
+    }
+
+    return f8a_t{best_index};
+}
+
+float _fp8_e4m3_to_fp32(f8b_t x) {
+    return FP8_E4M3_LUT[x._v];
+}
+
+f8b_t _fp32_to_fp8_e4m3(float x) {
+    if (x <= 0.0f) {
+        return f8b_t{0};
+    }
+
+    uint8_t best_index = 0;
+    float smallest_diff = std::fabs(x - FP8_E4M3_LUT[0]);
+
+    for (uint16_t i = 1; i < 256; ++i) {
+        float diff = std::fabs(x - FP8_E4M3_LUT[i]);
+        if (diff < smallest_diff) {
+            smallest_diff = diff;
+            best_index = static_cast<uint8_t>(i);
+        }
+    }
+
+    return f8b_t{best_index};
+}
+
 #ifdef __F16C__
 // Convert a single FP16 value to FP32 using F16C instructions
 // This function leverages hardware acceleration for optimal performance
@@ -302,6 +348,30 @@ void fp32_to_bf16_batch(bf16_t *dst, const float *src, size_t count) {
         dst[i] = _f32_to_bf16(src[i]);
     }
 #endif
+}
+
+void f8a_to_fp32_batch(float *dst, const f8a_t *src, size_t count) {
+    for (size_t i = 0; i < count; ++i) {
+        dst[i] = _fp8_e5m2_to_fp32(src[i]);
+    }
+}
+
+void fp32_to_f8a_batch(f8a_t *dst, const float *src, size_t count) {
+    for (size_t i = 0; i < count; ++i) {
+        dst[i] = _fp32_to_fp8_e5m2(src[i]);
+    }
+}
+
+void f8b_to_fp32_batch(float *dst, const f8b_t *src, size_t count) {
+    for (size_t i = 0; i < count; ++i) {
+        dst[i] = _fp8_e4m3_to_fp32(src[i]);
+    }
+}
+
+void fp32_to_f8b_batch(f8b_t *dst, const float *src, size_t count) {
+    for (size_t i = 0; i < count; ++i) {
+        dst[i] = _fp32_to_fp8_e4m3(src[i]);
+    }
 }
 
 } // namespace llaisys::utils
