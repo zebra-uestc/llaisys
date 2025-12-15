@@ -105,6 +105,9 @@ __device__ __forceinline__ float to_float(__half x) { return __half2float(x); }
 template <>
 __device__ __forceinline__ float to_float(__nv_bfloat16 x) { return __bfloat162float(x); }
 
+template <>
+__device__ __forceinline__ float to_float(int8_t x) { return static_cast<float>(x); }
+
 template <typename T>
 __device__ __forceinline__ T from_float(float x);
 
@@ -116,6 +119,9 @@ __device__ __forceinline__ __half from_float(float x) { return __float2half(x); 
 
 template <>
 __device__ __forceinline__ __nv_bfloat16 from_float(float x) { return __float2bfloat16(x); }
+
+template <>
+__device__ __forceinline__ int8_t from_float(float x) { return static_cast<int8_t>(fminf(127.0f, fmaxf(-128.0f, x))); }
 
 // Load 128-bit data as float4 and compute dot product
 template <typename T>
