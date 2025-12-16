@@ -51,6 +51,27 @@ void rms_norm_(T *out, const T *in, const T *weight, float eps, size_t nrow, siz
             }
             llaisys::utils::fp32_to_fp16_batch_f16c(out_t, out_f32.data(), ncol);
 
+        } else if constexpr (std::is_same_v<T, int8_t>) {
+            int32_t square_sum = llaisys::ops::cpu::sdot_int8(in_t, in_t, ncol);
+
+            float mean = static_cast<float>(square_sum) / static_cast<float>(ncol);
+            
+            float rms = std::sqrt(mean + eps);
+            float scale = 1.0f / rms;
+
+            for (size_t j = 0; j < ncol; ++j) {
+                float w_val = static_cast<float>(weight[j]);
+                float x_val = static_cast<float>(in_t[j]);
+                
+                float res = x_val * w_val * scale;
+                
+                res = std::round(res);
+                
+                if (res > 127.0f) res = 127.0f;
+                if (res < -128.0f) res = -128.0f;
+
+                out_t[j] = static_cast<int8_t>(res);
+            }
         } else {
             T rms{}, square_sum{}, avg_square_sum{};
             square_sum = llaisys::ops::cpu::sdot(in_t, in_t, ncol);
@@ -75,6 +96,8 @@ void rms_norm(std::byte *out, const std::byte *in, const std::byte *weight, floa
     case LLAISYS_DTYPE_F16:
         return rms_norm_(reinterpret_cast<llaisys::fp16_t *>(out), reinterpret_cast<const llaisys::fp16_t *>(in),
                          reinterpret_cast<const llaisys::fp16_t *>(weight), eps, nrow, ncol);
+    case LLAISYS_DTYPE_I8:
+        return rms_norm_(reinterpret_cast<int8_t *>(out), reinterpret_cast<const int8_t *>(in), reinterpret_cast<const int8_t *>(weight), eps, nrow, ncol);
     default:
         EXCEPTION_UNSUPPORTED_DATATYPE(type);
     }
