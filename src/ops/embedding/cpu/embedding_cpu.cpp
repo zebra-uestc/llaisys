@@ -34,6 +34,8 @@ void embedding(std::byte *out, const std::byte *index, const std::byte *weight, 
     case LLAISYS_DTYPE_F16:
         return embedding_(reinterpret_cast<llaisys::fp16_t *>(out), reinterpret_cast<const int64_t *>(index),
                           reinterpret_cast<const llaisys::fp16_t *>(weight), numel, len);
+    case LLAISYS_DTYPE_I8:
+        return embedding_(reinterpret_cast<int8_t *>(out), reinterpret_cast<const int64_t *>(index), reinterpret_cast<const int8_t *>(weight), numel, len);
     default:
         EXCEPTION_UNSUPPORTED_DATATYPE(type);
     }

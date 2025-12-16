@@ -21,7 +21,7 @@ def test_op_add(
     profile=False,
 ):
     print(f"   shape {shape} dtype <{dtype_name}>")
-    if dtype_name != "i8":
+    if dtype_name not in ["i8"]:
         a, a_ = random_tensor(shape, dtype_name, device_name)
         b, b_ = random_tensor(shape, dtype_name, device_name)
 

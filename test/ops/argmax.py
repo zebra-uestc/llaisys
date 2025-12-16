@@ -20,10 +20,11 @@ def test_op_argmax(
     profile=False,
 ):
     print(f"   shape {shape} dtype <{dtype_name}>")
-    if dtype_name == "i8":
-        vals, vals_ = random_int_tensor(shape, device_name, dtype_name)
-    else:
+    if dtype_name not in ["i8"]:
         vals, vals_ = random_tensor(shape, dtype_name, device_name)
+    else:
+        vals, vals_ = random_int_tensor(shape, device_name, "i8", low=-128, high=127)
+    
     max_idx, max_idx_ = zero_tensor((1,), "i64", device_name)
     max_val, max_val_ = zero_tensor((1,), dtype_name, device_name)
 
