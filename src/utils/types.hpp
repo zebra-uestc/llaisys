@@ -5,6 +5,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <cmath>
+#include <algorithm>
 
 namespace llaisys {
 struct CustomFloat16 {
@@ -322,8 +323,9 @@ TypeTo cast(TypeFrom val) {
     } else if constexpr (std::is_same<TypeFrom, f8b_t>::value && !std::is_same<TypeTo, float>::value) {
         return static_cast<TypeTo>(_fp8_e4m3_to_fp32(val));
     } else if constexpr (std::is_same<TypeFrom, float>::value && std::is_same<TypeTo, int8_t>::value) {
-        //return static_cast<TypeTo>(std::lrintf(val));
-        return static_cast<TypeTo>(val + (val >= 0 ? 0.5f : -0.5f));
+        float temp = val + (val >= 0.0f ? 0.5f : -0.5f);
+        temp = std::clamp(temp, -128.0f, 127.0f);
+        return static_cast<TypeTo>(temp);
     } else {
         return static_cast<TypeTo>(val);
     }
