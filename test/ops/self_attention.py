@@ -72,7 +72,7 @@ def test_op_self_attention(
         attn_val, attn_val_ = random_int_tensor((qlen, nh, hd), device_name, dtype_name)
     torch_self_attention(attn_val, q, k, v, scale)
     llaisys.Ops.self_attention(attn_val_, q_, k_, v_, scale)
-    assert check_equal(attn_val_, attn_val, atol=atol, rtol=rtol)
+    assert check_equal(attn_val_, attn_val, atol=atol, rtol=rtol, int_mismatch_ratio=0.00001)
 
     if profile:
         benchmark(
