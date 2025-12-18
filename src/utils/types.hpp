@@ -323,7 +323,7 @@ TypeTo cast(TypeFrom val) {
     } else if constexpr (std::is_same<TypeFrom, f8b_t>::value && !std::is_same<TypeTo, float>::value) {
         return static_cast<TypeTo>(_fp8_e4m3_to_fp32(val));
     } else if constexpr (std::is_same<TypeFrom, float>::value && std::is_same<TypeTo, int8_t>::value) {
-        float temp = val + (val >= 0.0f ? 0.5f : -0.5f);
+        float temp = std::nearbyint(val);
         temp = std::clamp(temp, -128.0f, 127.0f);
         return static_cast<TypeTo>(temp);
     } else {
