@@ -121,7 +121,10 @@ template <>
 __device__ __forceinline__ __nv_bfloat16 from_float(float x) { return __float2bfloat16(x); }
 
 template <>
-__device__ __forceinline__ int8_t from_float(float x) { return static_cast<int8_t>(fminf(127.0f, fmaxf(-128.0f, x))); }
+__device__ __forceinline__ int8_t from_float(float x) { 
+    int val = __float2int_rn(x); 
+    return static_cast<int8_t>(max(-128, min(127, val)));
+ }
 
 // Load 128-bit data as float4 and compute dot product
 template <typename T>
