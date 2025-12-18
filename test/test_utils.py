@@ -119,17 +119,19 @@ def check_equal(
     atol=1e-5,
     rtol=1e-5,
     strict=False,
+    int_mismatch_ratio=0.0,
 ):
     shape = llaisys_result.shape()
     strides = llaisys_result.strides()
-    assert shape == torch_answer.shape
-    assert torch_dtype(dtype_name(llaisys_result.dtype())) == torch_answer.dtype
+    
+    assert shape == torch_answer.shape, f"Shape mismatch: {shape} vs {torch_answer.shape}"
+    assert torch_dtype(dtype_name(llaisys_result.dtype())) == torch_answer.dtype, "Dtype mismatch"
 
     right = 0
     for i in range(len(shape)):
         if strides[i] > 0:
             right += strides[i] * (shape[i] - 1)
-        else:  # TODO: Support negative strides in the future
+        else:
             raise ValueError("Negative strides are not supported yet")
 
     tmp = torch.zeros(
@@ -140,6 +142,7 @@ def check_equal(
         ),
     )
     result = torch.as_strided(tmp, shape, strides)
+    
     api = llaisys.RuntimeAPI(llaisys_result.device_type())
     api.memcpy_sync(
         result.data_ptr(),
@@ -148,15 +151,57 @@ def check_equal(
         llaisys.MemcpyKind.D2D,
     )
 
+    res_cpu = result.cpu()
+    ans_cpu = torch_answer.cpu()
+    
+    is_integer = not res_cpu.is_floating_point()
+
+    passed = False
     if strict:
-        if torch.equal(result, torch_answer):
-            return True
+        passed = torch.equal(res_cpu, ans_cpu)
     else:
-        if torch.allclose(result, torch_answer, atol=atol, rtol=rtol):
+        passed = torch.allclose(res_cpu, ans_cpu, atol=atol, rtol=rtol)
+
+    if passed:
+        return True
+    
+    diff = (res_cpu - ans_cpu).abs()
+    
+    if strict:
+        mismatch_mask = res_cpu != ans_cpu
+    else:
+        tol = atol + rtol * ans_cpu.abs()
+        mismatch_mask = diff > tol
+
+    num_errors = torch.count_nonzero(mismatch_mask).item()
+    total_elements = res_cpu.numel()
+    error_ratio = num_errors / total_elements
+
+    if is_integer and num_errors > 0:
+        if error_ratio <= int_mismatch_ratio:
             return True
 
-    print(f"LLAISYS result: \n{result}")
-    print(f"Torch answer: \n{torch_answer}")
+    print(f"\n{'='*17} Check Equal Failed {'='*17}")
+    print(f"Shape: {shape}")
+    print(f"Total Mismatches: {num_errors} / {total_elements} ({error_ratio:.2%})")
+    print(f"Max Difference: {diff.max().item()}")
+
+    if num_errors > 0:
+        error_indices = torch.nonzero(mismatch_mask, as_tuple=False)
+        print("\n--- First 10 Mismatches (Index: Llaisys vs Torch | Diff) ---")
+        
+        for i, idx_tensor in enumerate(error_indices[:10]):
+            idx = tuple(idx_tensor.tolist())
+            val_dut = res_cpu[idx].item()
+            val_ref = ans_cpu[idx].item()
+            val_diff = diff[idx].item()
+            
+            if is_integer:
+                 print(f"  {idx}: {int(val_dut):4d} vs {int(val_ref):4d} | Diff: {int(val_diff)}")
+            else:
+                 print(f"  {idx}: {val_dut:.6f} vs {val_ref:.6f} | Diff: {val_diff:.6f}")
+    
+    print("="*54 + "\n")
     return False
 
 
