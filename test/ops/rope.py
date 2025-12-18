@@ -5,7 +5,7 @@ parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, parent_dir)
 import llaisys
 import torch
-from test_utils import arrange_tensor, random_tensor, check_equal, benchmark
+from test_utils import arrange_tensor, random_tensor, check_equal, benchmark, random_int_tensor
 
 
 def torch_rope(y: torch.Tensor, x: torch.Tensor, pos_ids: torch.Tensor, theta: float):
@@ -30,8 +30,15 @@ def torch_rope(y: torch.Tensor, x: torch.Tensor, pos_ids: torch.Tensor, theta: f
     cos = cos.unsqueeze(1)
 
     # Apply rotation
-    y[..., : head_dim // 2] = x_a * cos - x_b * sin
-    y[..., head_dim // 2 :] = x_b * cos + x_a * sin
+    res_left = x_a * cos - x_b * sin
+    res_right = x_b * cos + x_a * sin
+
+    if y.is_floating_point():
+        y[..., : head_dim // 2] = res_left
+        y[..., head_dim // 2 :] = res_right
+    else:
+        y[..., : head_dim // 2] = res_left.round().to(y.dtype)
+        y[..., head_dim // 2 :] = res_right.round().to(y.dtype)
 
 
 def test_op_rope(
@@ -44,10 +51,16 @@ def test_op_rope(
     profile=False,
 ):
     print(f"   shape {shape} range {start_end} dtype <{dtype_name}>")
-    x, x_ = random_tensor(shape, dtype_name, device_name)
-    pos_ids, pos_ids_ = arrange_tensor(start_end[0], start_end[1], device_name)
-    theta = 10000.0
-    y, y_ = random_tensor(shape, dtype_name, device_name)
+    if dtype_name not in ["i8"]:
+        x, x_ = random_tensor(shape, dtype_name, device_name)
+        pos_ids, pos_ids_ = arrange_tensor(start_end[0], start_end[1], device_name)
+        theta = 10000.0
+        y, y_ = random_tensor(shape, dtype_name, device_name)
+    else:
+        x, x_ = random_int_tensor(shape, device_name, dtype_name)
+        pos_ids, pos_ids_ = arrange_tensor(start_end[0], start_end[1], device_name)
+        theta = 10000.0
+        y, y_ = random_int_tensor(shape, device_name, dtype_name)
     torch_rope(y, x, pos_ids, theta)
     llaisys.Ops.rope(y_, x_, pos_ids_, theta)
 
@@ -87,6 +100,7 @@ if __name__ == "__main__":
         ("f32", 1e-4, 1e-4),
         ("f16", 1e-3, 1e-3),
         ("bf16", 1e-2, 1e-2),
+        ("i8", 0, 0),
     ]
     print(f"Testing Ops.rope on {args.device}")
     for shape, start_end in testShapes:

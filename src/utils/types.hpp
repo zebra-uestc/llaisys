@@ -321,6 +321,9 @@ TypeTo cast(TypeFrom val) {
         return _fp8_e4m3_to_fp32(val);
     } else if constexpr (std::is_same<TypeFrom, f8b_t>::value && !std::is_same<TypeTo, float>::value) {
         return static_cast<TypeTo>(_fp8_e4m3_to_fp32(val));
+    } else if constexpr (std::is_same<TypeFrom, float>::value && std::is_same<TypeTo, int8_t>::value) {
+        //return static_cast<TypeTo>(std::lrintf(val));
+        return static_cast<TypeTo>(val + (val >= 0 ? 0.5f : -0.5f));
     } else {
         return static_cast<TypeTo>(val);
     }
