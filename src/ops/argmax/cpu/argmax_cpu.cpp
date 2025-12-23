@@ -63,6 +63,8 @@ void argmax(std::byte *max_idx, std::byte *max_val, const std::byte *vals, llais
     case LLAISYS_DTYPE_F16:
         return argmax_(reinterpret_cast<int64_t *>(max_idx), reinterpret_cast<llaisys::fp16_t *>(max_val),
                        reinterpret_cast<const llaisys::fp16_t *>(vals), numel);
+    case LLAISYS_DTYPE_I8:
+        return argmax_(reinterpret_cast<int64_t *>(max_idx), reinterpret_cast<int8_t *>(max_val), reinterpret_cast<const int8_t *>(vals), numel);
     default:
         EXCEPTION_UNSUPPORTED_DATATYPE(type);
     }

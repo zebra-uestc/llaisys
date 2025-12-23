@@ -5,7 +5,7 @@ parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, parent_dir)
 import llaisys
 import torch
-from test_utils import random_tensor, check_equal, benchmark
+from test_utils import random_tensor, check_equal, benchmark, random_int_tensor
 
 
 def torch_rms_norm(ans, x, w, eps):
@@ -16,6 +16,23 @@ def torch_rms_norm(ans, x, w, eps):
     torch.mul(x, mean, out=ans)
     ans.mul_(w)
 
+def torch_rms_norm_int(ans, x, w, eps):
+    x_high = x.to(torch.float32)
+    w_high = w.to(torch.float32)
+    
+    var = torch.pow(x_high, 2) 
+    
+    mean = torch.mean(var, dim=-1, keepdim=True)
+    
+    mean.add_(eps)
+    torch.rsqrt(mean, out=mean)
+    
+    out_high = x_high * mean * w_high
+    
+    if ans.dtype in [torch.int8, torch.uint8]:
+        out_high = torch.round(out_high)
+        
+    ans.copy_(out_high.to(ans.dtype))
 
 def test_op_rms_norm(
     shape,
@@ -26,22 +43,36 @@ def test_op_rms_norm(
     profile=False,
 ):
     print(f"   shape {shape} dtype <{dtype_name}>")
-    x, x_ = random_tensor(shape, dtype_name, device_name)
-    w, w_ = random_tensor((shape[1],), dtype_name, device_name)
+    if dtype_name not in ["i8"]:
+        x, x_ = random_tensor(shape, dtype_name, device_name)
+        w, w_ = random_tensor((shape[1],), dtype_name, device_name)
+        c, c_ = random_tensor(shape, dtype_name, device_name)
+    else:
+        x, x_ = random_int_tensor(shape, device_name, dtype_name)
+        w, w_ = random_int_tensor((shape[1],), device_name, dtype_name)
+        c, c_ = random_int_tensor(shape, device_name, dtype_name)
     eps = 1e-5
-
-    c, c_ = random_tensor(shape, dtype_name, device_name)
-    torch_rms_norm(c, x, w, eps)
+    if dtype_name not in ["i8"]:
+        torch_rms_norm(c, x, w, eps)
+    else:
+        torch_rms_norm_int(c, x, w, eps)
     llaisys.Ops.rms_norm(c_, x_, w_, eps)
 
     assert check_equal(c_, c, atol=atol, rtol=rtol)
 
     if profile:
-        benchmark(
-            lambda: torch_rms_norm(c, x, w, eps),
-            lambda: llaisys.Ops.rms_norm(c_, x_, w_, eps),
-            device_name,
-        )
+        if dtype_name not in ["i8"]:
+            benchmark(
+                lambda: torch_rms_norm(c, x, w, eps),
+                lambda: llaisys.Ops.rms_norm(c_, x_, w_, eps),
+                device_name,
+            )
+        else:
+            benchmark(
+                lambda: torch_rms_norm_int(c, x, w, eps),
+                lambda: llaisys.Ops.rms_norm(c_, x_, w_, eps),
+                device_name,
+            )
 
 
 if __name__ == "__main__":
@@ -64,6 +95,7 @@ if __name__ == "__main__":
         ("f32", 1e-5, 1e-5),
         ("f16", 1e-3, 1e-3),
         ("bf16", 1e-2, 1e-2),
+        ("i8", 0, 0),
     ]
     print(f"Testing Ops.rms_norm on {args.device}")
     for shape in testShapes:

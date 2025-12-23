@@ -5,11 +5,28 @@ parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, parent_dir)
 import llaisys
 import torch
-from test_utils import random_tensor, check_equal, benchmark
+from test_utils import random_tensor, check_equal, benchmark, random_int_tensor
 
 
 def torch_swiglu(out, gate, up):
-    torch.mul(up, gate / (1 + torch.exp(-gate.float()).to(out.dtype)), out=out)
+    if not torch.is_floating_point(out):        
+        gate_f = gate.to(torch.float32)
+        up_f = up.to(torch.float32)
+        
+        sigmoid_val = 1 / (1 + torch.exp(-gate_f))
+        res_f = up_f * (gate_f * sigmoid_val)
+        
+        if out.dtype == torch.int8:
+            res_f = torch.clamp(res_f, min=-128, max=127)
+        elif out.dtype == torch.uint8:
+            res_f = torch.clamp(res_f, min=0, max=255)
+            
+        res_f = torch.round(res_f)
+        
+        out.copy_(res_f.to(out.dtype))
+        
+    else:
+        torch.mul(up, gate / (1 + torch.exp(-gate.float()).to(out.dtype)), out=out)
 
 
 def test_op_swiglu(
@@ -21,10 +38,14 @@ def test_op_swiglu(
     profile=False,
 ):
     print(f"   shape {shape} dtype <{dtype_name}>")
-    gate, gate_ = random_tensor(shape, dtype_name, device_name)
-    up, up_ = random_tensor(shape, dtype_name, device_name)
-
-    out, out_ = random_tensor(shape, dtype_name, device_name)
+    if dtype_name not in ["i8"]:
+        gate, gate_ = random_tensor(shape, dtype_name, device_name)
+        up, up_ = random_tensor(shape, dtype_name, device_name)
+        out, out_ = random_tensor(shape, dtype_name, device_name)
+    else:
+        gate, gate_ = random_int_tensor(shape, device_name, dtype_name)
+        up, up_ = random_int_tensor(shape, device_name, dtype_name)
+        out, out_ = random_int_tensor(shape, device_name, dtype_name)
     torch_swiglu(out, gate, up)
     llaisys.Ops.swiglu(out_, gate_, up_)
 
@@ -58,6 +79,7 @@ if __name__ == "__main__":
         ("f32", 1e-5, 1e-5),
         ("f16", 1e-3, 1e-3),
         ("bf16", 1e-2, 1e-2),
+        ("i8", 0, 0),
     ]
     print(f"Testing Ops.swiglu on {args.device}")
     for shape in testShapes:

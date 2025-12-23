@@ -20,10 +20,94 @@ FORCE_INLINE void scalar_add_tiny(T *c, const T *a, const T *b, size_t numel) {
     // Simplest loop - let compiler optimize
     // For <64 elements, this is faster than any SIMD approach
     for (size_t i = 0; i < numel; ++i) {
-        float f_a = llaisys::utils::cast<float>(a[i]);
-        float f_b = llaisys::utils::cast<float>(b[i]);
-        c[i] = llaisys::utils::cast<T>(f_a + f_b);
+        if constexpr (std::is_arithmetic_v<T>) {
+            c[i] = a[i] + b[i];
+        } else {
+            float f_a = llaisys::utils::cast<float>(a[i]);
+            float f_b = llaisys::utils::cast<float>(b[i]);
+            c[i] = llaisys::utils::cast<T>(f_a + f_b);
+        }
     }
+}
+
+void add_i8(int8_t *c, const int8_t *a, const int8_t *b, size_t numel) {
+    // Fast path: tiny data - avoid all vectorization overhead
+    if (numel <= SIMD_THRESHOLD) {
+        scalar_add_tiny(c, a, b, numel);
+        return;
+    }
+
+#if defined(__AVX512BW__)
+    const size_t vec_size = 64; // 512 bits / 8 bits = 64 elements
+    size_t align = numel & ~(vec_size - 1); // Bit-wise modulo, faster than % operator
+
+    // Medium scale: single-threaded SIMD (avoid OpenMP thread creation overhead)
+    if (numel < PARALLEL_THRESHOLD) {
+        size_t i = 0;
+        // Main loop: process 64 int8 elements at once
+        for (; i < align; i += vec_size) {
+            // Load 64 int8 values (512 bits) directly from memory
+            __m512i a_vec = _mm512_loadu_si512((const void*)(a + i));
+            __m512i b_vec = _mm512_loadu_si512((const void*)(b + i));
+
+            // Perform integer addition
+            // Note: _mm512_add_epi8 performs standard wrap-around addition.
+            // Use _mm512_adds_epi8 for saturation (e.g., 120 + 10 = 127), common in quantization.
+            __m512i c_vec = _mm512_add_epi8(a_vec, b_vec);
+
+            // Store 64 int8 results back to memory
+            _mm512_storeu_si512((void*)(c + i), c_vec);
+        }
+
+        // Handle remaining elements (< 64) using scalar addition
+        for (; i < numel; ++i) {
+            c[i] = a[i] + b[i];
+        }
+        return;
+    }
+
+// Large scale: multi-threaded SIMD
+// Manual thread partitioning for better cache locality (static scheduling)
+#pragma omp parallel
+    {
+        int tid = omp_get_thread_num();
+        int nthreads = omp_get_num_threads();
+
+        // Manual chunking: ensure each thread processes multiples of vec_size
+        size_t chunk_size = align / nthreads;
+        chunk_size = (chunk_size / vec_size) * vec_size;
+
+        size_t start = tid * chunk_size;
+        size_t end = (tid == nthreads - 1) ? align : start + chunk_size;
+
+        for (size_t i = start; i < end; i += vec_size) {
+            // Load 64 int8 values
+            __m512i a_vec = _mm512_loadu_si512((const void*)(a + i));
+            __m512i b_vec = _mm512_loadu_si512((const void*)(b + i));
+
+            // Perform addition (wrap-around)
+            __m512i c_vec = _mm512_add_epi8(a_vec, b_vec); 
+
+            // Store results
+            _mm512_storeu_si512((void*)(c + i), c_vec);
+        }
+    }
+
+    // Single-threaded tail processing for remaining elements
+    for (size_t i = align; i < numel; ++i) {
+        c[i] = a[i] + b[i];
+    }
+
+#else
+    // Fallback: scalar implementation with OpenMP parallelization for general CPUs
+    // (Note: An AVX2 branch could be added here using _mm256_add_epi8)
+    if (numel < PARALLEL_THRESHOLD) {
+        for (size_t i = 0; i < numel; ++i) c[i] = a[i] + b[i];
+    } else {
+#pragma omp parallel for schedule(static)
+        for (size_t i = 0; i < numel; ++i) c[i] = a[i] + b[i];
+    }
+#endif
 }
 
 void add_bf16(llaisys::bf16_t *c, const llaisys::bf16_t *a, const llaisys::bf16_t *b, size_t numel) {
@@ -332,4 +416,40 @@ void add_f32(float *c, const float *a, const float *b, size_t numel) {
         }
     }
 #endif
+}
+
+void add_f8a(llaisys::f8a_t *c, const llaisys::f8a_t *a, const llaisys::f8a_t *b, size_t numel) {
+    // Convert f8a to fp32, perform addition, convert back to f8a
+    float *a_fp32 = new float[numel];
+    float *b_fp32 = new float[numel];
+    float *c_fp32 = new float[numel];
+
+    llaisys::utils::f8a_to_fp32_batch(a_fp32, a, numel);
+    llaisys::utils::f8a_to_fp32_batch(b_fp32, b, numel);
+
+    add_f32(c_fp32, a_fp32, b_fp32, numel);
+
+    llaisys::utils::fp32_to_f8a_batch(c, c_fp32, numel);
+
+    delete[] a_fp32;
+    delete[] b_fp32;
+    delete[] c_fp32;
+}
+
+void add_f8b(llaisys::f8b_t *c, const llaisys::f8b_t *a, const llaisys::f8b_t *b, size_t numel) {
+    // Convert f8b to fp32, perform addition, convert back to f8b
+    float *a_fp32 = new float[numel];
+    float *b_fp32 = new float[numel];
+    float *c_fp32 = new float[numel];
+
+    llaisys::utils::f8b_to_fp32_batch(a_fp32, a, numel);
+    llaisys::utils::f8b_to_fp32_batch(b_fp32, b, numel);
+
+    add_f32(c_fp32, a_fp32, b_fp32, numel);
+
+    llaisys::utils::fp32_to_f8b_batch(c, c_fp32, numel);
+
+    delete[] a_fp32;
+    delete[] b_fp32;
+    delete[] c_fp32;
 }

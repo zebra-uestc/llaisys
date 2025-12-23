@@ -4,6 +4,7 @@
 
 #include <cuda_runtime.h>
 #include <type_traits>
+#include <cstdint>
 
 namespace llaisys::ops::nvidia {
 
@@ -134,7 +135,17 @@ __global__ void rmsnorm_kernel_vec(T *output, const T *input,
     // ---- Pass 1: compute square sum ----
     float sqsum = 0.0f;
     for (size_t i = tid; i < vec_len; i += blockDim.x) {
-        sqsum += vec128_dot<T>(row_in + i * VEC_SIZE, row_in + i * VEC_SIZE);
+        if constexpr (std::is_same_v<T, int8_t>) {
+            const float4 v = FLOAT4_CONST(row_in[i * VEC_SIZE]);
+            const int *v_int = reinterpret_cast<const int*>(&v);
+            
+            #pragma unroll
+            for (int k = 0; k < 4; ++k) {
+                sqsum = __dp4a(v_int[k], v_int[k], sqsum);
+            }
+        } else {
+            sqsum += vec128_dot<T>(row_in + i * VEC_SIZE, row_in + i * VEC_SIZE);
+        }
     }
 
     size_t offset = vec_len * VEC_SIZE;
@@ -146,6 +157,8 @@ __global__ void rmsnorm_kernel_vec(T *output, const T *input,
             d = __half2float(row_in[i]);
         } else if constexpr (std::is_same_v<T, cuda_bfloat16>) {
             d = __bfloat162float(row_in[i]);
+        } else if constexpr (std::is_same_v<T, int8_t>) {
+            d = static_cast<float>(row_in[i]);
         }
         sqsum += d * d;
     }
@@ -204,6 +217,21 @@ __global__ void rmsnorm_kernel_vec(T *output, const T *input,
                 float res_f = to_float(v_bf[i]) * to_float(w_bf[i]) * inv_std;
                 res_bf[i] = from_float<cuda_bfloat16>(res_f);
             }
+        } else if constexpr (std::is_same_v<T, int8_t>) {
+            const float4 v = FLOAT4_CONST(row_in[i * VEC_SIZE]);
+            const float4 w = FLOAT4_CONST(weight[i * VEC_SIZE]);
+            
+            const int8_t *v_ptr = reinterpret_cast<const int8_t*>(&v);
+            const int8_t *w_ptr = reinterpret_cast<const int8_t*>(&w);
+            int8_t *res_ptr = reinterpret_cast<int8_t*>(&res);
+
+            #pragma unroll
+            for (int k = 0; k < 16; ++k) {
+                float val = static_cast<float>(v_ptr[k]);
+                float wei = static_cast<float>(w_ptr[k]);
+                float res_f = val * wei * inv_std;
+                res_ptr[k] = from_float<int8_t>(res_f);
+            }
         }
         FLOAT4(row_out[i * VEC_SIZE]) = res;
     }
@@ -215,6 +243,11 @@ __global__ void rmsnorm_kernel_vec(T *output, const T *input,
             row_out[i] = __float2half(__half2float(row_in[i]) * __half2float(weight[i]) * inv_std);
         } else if constexpr (std::is_same_v<T, cuda_bfloat16>) {
             row_out[i] = __float2bfloat16(__bfloat162float(row_in[i]) * __bfloat162float(weight[i]) * inv_std);
+        } else if constexpr (std::is_same_v<T, int8_t>) {
+            float val = static_cast<float>(row_in[i]);
+            float wei = static_cast<float>(weight[i]);
+            float res_f = val * wei * inv_std;
+            row_out[i] = from_float<int8_t>(res_f);
         }
     }
 }
@@ -232,6 +265,9 @@ void rms_norm(std::byte *out, const std::byte *in, const std::byte *weight, floa
     case LLAISYS_DTYPE_F16:
         return rmsnorm_kernel_vec<<<grid_dim, block_dim>>>(reinterpret_cast<half *>(out), reinterpret_cast<const half *>(in),
                                                             reinterpret_cast<const half *>(weight), eps, ncol);
+    case LLAISYS_DTYPE_I8:
+        return rmsnorm_kernel_vec<<<grid_dim, block_dim>>>(reinterpret_cast<int8_t *>(out), reinterpret_cast<const int8_t *>(in),
+                                                            reinterpret_cast<const int8_t *>(weight), eps, ncol);
     default:
         EXCEPTION_UNSUPPORTED_DATATYPE(type);
     }

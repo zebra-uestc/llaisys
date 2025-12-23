@@ -45,6 +45,8 @@
 #define FLOAT4_CONST(value) (reinterpret_cast<const float4 *>(&(value))[0])
 #define LDST128BITS(value) (reinterpret_cast<float4 *>(&(value))[0])
 #define LD128BITS_CONST(value) (reinterpret_cast<const float4 *>(&(value))[0])
+#define INT4(value) (reinterpret_cast<int4 *>(&(value))[0])
+#define INT4_CONST(value) (reinterpret_cast<const int4 *>(&(value))[0])
 
 using cuda_bfloat16 = nv_bfloat16;
 using cuda_bfloat162 = nv_bfloat162;
@@ -81,6 +83,13 @@ struct PackedUtils<cuda_bfloat16> {
     static constexpr int pack_size = 8;
 };
 
+// INT8: 1 int4 = 16 int8s
+template <>
+struct PackedUtils<int8_t> {
+    using PackedType = int4;
+    static constexpr int pack_size = 16;
+};
+
 // ============================================================================
 // Type conversion utilities
 // ============================================================================
@@ -96,6 +105,9 @@ __device__ __forceinline__ float to_float(__half x) { return __half2float(x); }
 template <>
 __device__ __forceinline__ float to_float(__nv_bfloat16 x) { return __bfloat162float(x); }
 
+template <>
+__device__ __forceinline__ float to_float(int8_t x) { return static_cast<float>(x); }
+
 template <typename T>
 __device__ __forceinline__ T from_float(float x);
 
@@ -107,6 +119,12 @@ __device__ __forceinline__ __half from_float(float x) { return __float2half(x); 
 
 template <>
 __device__ __forceinline__ __nv_bfloat16 from_float(float x) { return __float2bfloat16(x); }
+
+template <>
+__device__ __forceinline__ int8_t from_float(float x) { 
+    int val = __float2int_rn(x); 
+    return static_cast<int8_t>(max(-128, min(127, val)));
+ }
 
 // Load 128-bit data as float4 and compute dot product
 template <typename T>

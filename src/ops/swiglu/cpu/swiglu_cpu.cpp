@@ -34,6 +34,9 @@ void swiglu(std::byte *out, const std::byte *gate, const std::byte *up, llaisysD
     case LLAISYS_DTYPE_F16:
         return swiglu_(reinterpret_cast<llaisys::fp16_t *>(out), reinterpret_cast<const llaisys::fp16_t *>(gate),
                        reinterpret_cast<const llaisys::fp16_t *>(up), numel);
+    case LLAISYS_DTYPE_I8:
+        return swiglu_(reinterpret_cast<int8_t *>(out), reinterpret_cast<const int8_t *>(gate),
+                       reinterpret_cast<const int8_t *>(up), numel);
     default:
         EXCEPTION_UNSUPPORTED_DATATYPE(type);
     }

@@ -61,6 +61,9 @@ void rope(std::byte *out, const std::byte *in, const std::byte *pos_ids, float t
     case LLAISYS_DTYPE_F16:
         return rope_(reinterpret_cast<llaisys::fp16_t *>(out), reinterpret_cast<const llaisys::fp16_t *>(in),
                      reinterpret_cast<const int64_t *>(pos_ids), theta, seqlen, nhead, d, inv_theta);
+    case LLAISYS_DTYPE_I8:
+        return rope_(reinterpret_cast<int8_t *>(out), reinterpret_cast<const int8_t *>(in),
+                     reinterpret_cast<const int64_t *>(pos_ids), theta, seqlen, nhead, d, inv_theta);
     default:
         EXCEPTION_UNSUPPORTED_DATATYPE(type);
     }

@@ -6,7 +6,7 @@ parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, parent_dir)
 import llaisys
 import torch
-from test_utils import random_tensor, check_equal, benchmark, zero_tensor
+from test_utils import random_tensor, check_equal, benchmark, zero_tensor, random_int_tensor
 
 
 def torch_argmax(max_idx, max_val, vals):
@@ -20,7 +20,11 @@ def test_op_argmax(
     profile=False,
 ):
     print(f"   shape {shape} dtype <{dtype_name}>")
-    vals, vals_ = random_tensor(shape, dtype_name, device_name)
+    if dtype_name not in ["i8"]:
+        vals, vals_ = random_tensor(shape, dtype_name, device_name)
+    else:
+        vals, vals_ = random_int_tensor(shape, device_name, "i8", low=-128, high=127)
+    
     max_idx, max_idx_ = zero_tensor((1,), "i64", device_name)
     max_val, max_val_ = zero_tensor((1,), dtype_name, device_name)
 
@@ -47,7 +51,7 @@ if __name__ == "__main__":
     parser.add_argument("--profile", action="store_true")
     args = parser.parse_args()
     testShapes = [(151936,), (152064,)]
-    testDtype = ["f32", "f16", "bf16"]
+    testDtype = ["f32", "f16", "bf16", "i8"]
     print(f"Testing Ops.argmax on {args.device}")
     for shape in testShapes:
         for dtype_name in testDtype:

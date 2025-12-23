@@ -67,6 +67,8 @@ void rope(std::byte *out, const std::byte *in, const std::byte *pos_ids, float t
         return rope_kernel<<<gridDim, blockDim>>>(reinterpret_cast<half *>(out), reinterpret_cast<const half *>(in), reinterpret_cast<const int64_t *>(pos_ids), theta, seqlen, nhead, d);
     case LLAISYS_DTYPE_BF16:
         return rope_kernel<<<gridDim, blockDim>>>(reinterpret_cast<cuda_bfloat16 *>(out), reinterpret_cast<const cuda_bfloat16 *>(in), reinterpret_cast<const int64_t *>(pos_ids), theta, seqlen, nhead, d);
+    case LLAISYS_DTYPE_I8:
+        return rope_kernel<<<gridDim, blockDim>>>(reinterpret_cast<int8_t *>(out), reinterpret_cast<const int8_t *>(in), reinterpret_cast<const int64_t *>(pos_ids), theta, seqlen, nhead, d);
     default:
         EXCEPTION_UNSUPPORTED_DATATYPE(type);
     }
