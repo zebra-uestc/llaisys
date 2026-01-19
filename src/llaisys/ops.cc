@@ -22,11 +22,11 @@ __LLAISYS__C {
     void llaisysEmbedding(llaisysTensor_t out, llaisysTensor_t index, llaisysTensor_t weight) {
         llaisys::ops::embedding(out->tensor, index->tensor, weight->tensor);
     }
-    void llaisysLinear(llaisysTensor_t out, llaisysTensor_t in, llaisysTensor_t weight, llaisysTensor_t bias) {
+    void llaisysLinear(llaisysTensor_t out, llaisysTensor_t in, llaisysTensor_t weight, llaisysTensor_t bias, llaisysTensor_t scales) {
         if (bias) {
-            llaisys::ops::linear(out->tensor, in->tensor, weight->tensor, bias->tensor);
+            llaisys::ops::linear(out->tensor, in->tensor, weight->tensor, bias->tensor, scales ? scales->tensor : nullptr);
         } else {
-            llaisys::ops::linear(out->tensor, in->tensor, weight->tensor, nullptr);
+            llaisys::ops::linear(out->tensor, in->tensor, weight->tensor, nullptr, scales ? scales->tensor : nullptr);
         }
     }
     void llaisysRearrange(llaisysTensor_t out, llaisysTensor_t in) {

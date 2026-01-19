@@ -349,6 +349,15 @@ void self_attention(std::byte *attn_val, const std::byte *q, const std::byte *k,
             return self_attention_prefill_kernel<<<gridDim, blockDim, smem_size>>>(reinterpret_cast<cuda_bfloat16 *>(attn_val), reinterpret_cast<const cuda_bfloat16 *>(q), reinterpret_cast<const cuda_bfloat16 *>(k), reinterpret_cast<const cuda_bfloat16 *>(v), scale, nhead, nkvhead, d, dv, seqlen, total_len);
         }
     } break;
+    case LLAISYS_DTYPE_I8: {
+        if (likely(seqlen == 1)) {
+            dim3 gridDim(nhead);
+            return self_attention_decode_kernel<<<gridDim, blockDim, smem_size>>>(reinterpret_cast<int8_t *>(attn_val), reinterpret_cast<const int8_t *>(q), reinterpret_cast<const int8_t *>(k), reinterpret_cast<const int8_t *>(v), scale, nhead, nkvhead, d, dv, total_len);
+        } else {
+            dim3 gridDim(seqlen, nhead);
+            return self_attention_prefill_kernel<<<gridDim, blockDim, smem_size>>>(reinterpret_cast<int8_t *>(attn_val), reinterpret_cast<const int8_t *>(q), reinterpret_cast<const int8_t *>(k), reinterpret_cast<const int8_t *>(v), scale, nhead, nkvhead, d, dv, seqlen, total_len);
+        }
+    } break;
     default:
         EXCEPTION_UNSUPPORTED_DATATYPE(type);
     }

@@ -55,6 +55,8 @@ void embedding(std::byte *out, const std::byte *index, const std::byte *weight, 
         return embedding_kernel_vec<<<grid_dim, block_dim>>>(reinterpret_cast<cuda_bfloat16 *>(out), reinterpret_cast<const cuda_bfloat16 *>(weight), reinterpret_cast<const int64_t *>(index), len);
     case LLAISYS_DTYPE_F16:
         return embedding_kernel_vec<<<grid_dim, block_dim>>>(reinterpret_cast<half *>(out), reinterpret_cast<const half *>(weight), reinterpret_cast<const int64_t *>(index), len);
+    case LLAISYS_DTYPE_I8:
+        return embedding_kernel_vec<<<grid_dim, block_dim>>>(reinterpret_cast<int8_t *>(out), reinterpret_cast<const int8_t *>(weight), reinterpret_cast<const int64_t *>(index), len);
     default:
         EXCEPTION_UNSUPPORTED_DATATYPE(type);
     }

@@ -17,6 +17,8 @@ __device__ __forceinline__ T get_lowest_value() {
         return __float2half(-CUDART_INF_F);
     } else if constexpr (std::is_same_v<T, cuda_bfloat16>) {
         return __float2bfloat16(-CUDART_INF_F);
+    } else if constexpr (std::is_same_v<T, int8_t>) {
+        return std::numeric_limits<int8_t>::min();
     }
 }
 
@@ -119,6 +121,11 @@ __global__ void reduce_argmax_kernel_warp(unsigned long long *global_packed,
                     *out_val = __float2bfloat16(v);
                     break;
                 }
+                case LLAISYS_DTYPE_I8: {
+                    int8_t *out_val = reinterpret_cast<int8_t *>(d_max_val);
+                    *out_val = from_float<int8_t>(v);
+                    break;
+                }
                 default:
                     break;
                 }
@@ -149,7 +156,7 @@ reduce_argmax_kernel_warp_smem(unsigned long long *global_packed,
 
     for (size_t j = gidx; j < N; j += blockDim.x * gridDim.x) {
         T v = input[j];
-        if (v > thread_max_val_t) {
+        if (thread_max_idx == UINT32_MAX || v > thread_max_val_t) {
             thread_max_val_t = v;
             thread_max_idx = static_cast<uint32_t>(j);
         }
@@ -240,6 +247,9 @@ void argmax(std::byte *max_idx, std::byte *max_val, const std::byte *vals, llais
         break;
     case LLAISYS_DTYPE_F16:
         reduce_argmax_kernel_warp<<<grid_dim, block_dim>>>(d_packed_res, reinterpret_cast<const half *>(vals), size, max_idx, max_val, type);
+        break;
+    case LLAISYS_DTYPE_I8:
+        reduce_argmax_kernel_warp<<<grid_dim, block_dim>>>(d_packed_res, reinterpret_cast<const int8_t *>(vals), size, max_idx, max_val, type);
         break;
     default:
         EXCEPTION_UNSUPPORTED_DATATYPE(type);

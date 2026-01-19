@@ -126,6 +126,56 @@ __global__ void swiglu_kernel_vec(T *__restrict__ out,
                 out[i] = __float2bfloat16(u_val * silu(g_val));
             }
         }
+    } else if constexpr (std::is_same_v<T, int8_t>) {
+        // ---------------------------------------------------
+        // Int8: Process 16 elements per thread (16 * 8-bit = 128-bit)
+        // ---------------------------------------------------
+        // 128-bit load = 16 bytes = 16 int8 elements
+        size_t idx = (blockIdx.x * blockDim.x + threadIdx.x) * 16;
+
+        if (idx + 15 < n) {
+            // Load 128-bit chunks
+            float4 g_vec = FLOAT4_CONST(gate[idx]);
+            float4 u_vec = FLOAT4_CONST(up[idx]);
+            float4 out_vec;
+
+            // Reinterpret cast: Treat 128-bit data as array of 16 int8_t
+            const int8_t *g_i8 = reinterpret_cast<const int8_t *>(&g_vec);
+            const int8_t *u_i8 = reinterpret_cast<const int8_t *>(&u_vec);
+            int8_t *out_i8 = reinterpret_cast<int8_t *>(&out_vec);
+
+            // SIMD Math loop (16 elements)
+            // Unroll to maximize instruction throughput
+            #pragma unroll
+            for (int k = 0; k < 16; ++k) {
+                // 1. Dequantize (Convert to float)
+                float g_val = static_cast<float>(g_i8[k]);
+                float u_val = static_cast<float>(u_i8[k]);
+
+                // 2. Compute SwiGLU in FP32
+                float res_val = u_val * silu(g_val);
+
+                // 3. Quantize (Convert back to int8)                
+                res_val = fminf(fmaxf(res_val, -128.0f), 127.0f);
+                out_i8[k] = static_cast<int8_t>(rintf(res_val));
+            }
+
+            // Vectorized Store
+            FLOAT4(out[idx]) = out_vec;
+
+        } else if (idx < n) {
+            // Tail Handling for remaining elements
+            for (size_t i = idx; i < n; i++) {
+                float g_val = static_cast<float>(gate[i]);
+                float u_val = static_cast<float>(up[i]);
+                
+                float res_val = u_val * silu(g_val);
+                
+                // Clamp and Store
+                res_val = fminf(fmaxf(res_val, -128.0f), 127.0f);
+                out[i] = static_cast<int8_t>(rintf(res_val));
+            }
+        }
     }
 }
 
@@ -172,6 +222,8 @@ void swiglu(std::byte *out, const std::byte *gate, const std::byte *up, llaisysD
         return launch_swiglu_kernel(reinterpret_cast<half *>(out), reinterpret_cast<const half *>(gate), reinterpret_cast<const half *>(up), numel);
     case LLAISYS_DTYPE_BF16:
         return launch_swiglu_kernel(reinterpret_cast<cuda_bfloat16 *>(out), reinterpret_cast<const cuda_bfloat16 *>(gate), reinterpret_cast<const cuda_bfloat16 *>(up), numel);
+    case LLAISYS_DTYPE_I8:
+        return launch_swiglu_kernel(reinterpret_cast<int8_t *>(out), reinterpret_cast<const int8_t *>(gate), reinterpret_cast<const int8_t *>(up), numel);
     default:
         EXCEPTION_UNSUPPORTED_DATATYPE(type);
     }

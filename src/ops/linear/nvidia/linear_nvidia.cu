@@ -3,6 +3,7 @@
 #include "linear_bf16_kernel.cuh"
 #include "linear_fp16_kernel.cuh"
 #include "linear_fp32_kernel.cuh"
+#include "linear_int8_kernel.cuh"
 #include "linear_nvidia.cuh"
 #include "llaisys.h"
 #include "matvec.cuh"
@@ -116,7 +117,95 @@ void launch_linear_bf16_kernel_autotuned(
     }
 }
 
-void linear(std::byte *out, const std::byte *in, const std::byte *weight, const std::byte *bias, llaisysDataType_t type, size_t nrow, size_t ncol_out, size_t ncol_in) {
+template<int BM, int BN, int BK, int APAD, int BPAD_BF16, int BPAD_INT8>
+void launch_w8a16_template(
+    cuda_bfloat16* C, const cuda_bfloat16* A, const int8_t* B, 
+    const cuda_bfloat16* bias, const cuda_bfloat16* scale, 
+    size_t M, size_t N, size_t K) 
+{
+    constexpr size_t smem_operands = 2 * BM * (BK + APAD) * sizeof(cuda_bfloat16) + 
+                                     2 * BN * (BK + BPAD_BF16) * sizeof(cuda_bfloat16);
+    constexpr size_t smem_stage_int8 = 2 * BN * (BK + BPAD_INT8) * sizeof(int8_t);
+    constexpr size_t smem_size = smem_operands + smem_stage_int8;
+
+    cudaFuncSetAttribute(linear_w8a16_kernel<BM, BN, BK, APAD, BPAD_BF16, BPAD_INT8>, 
+                         cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size);
+
+    dim3 gridDim(div_ceil(N, BN), div_ceil(M, BM));
+    
+    int num_warps = (BM / 64) * (BN / 64);
+    num_warps = max(1, min(8, num_warps)); 
+    dim3 blockDim(num_warps * 32);
+
+    linear_w8a16_kernel<BM, BN, BK, APAD, BPAD_BF16, BPAD_INT8>
+        <<<gridDim, blockDim, smem_size>>>(C, A, B, bias, scale, M, N, K);
+}
+
+void launch_linear_w8a16_autotuned(
+    cuda_bfloat16 *output,
+    const cuda_bfloat16 *input,
+    const int8_t *weight,
+    const cuda_bfloat16 *bias,
+    const cuda_bfloat16 *scale,
+    const size_t M,
+    const size_t N,
+    const size_t K) {
+    
+    constexpr int BK = 32;
+    constexpr int APAD = 8;
+    constexpr int BPAD_BF16 = 8;
+    constexpr int BPAD_INT8 = 16;
+
+    // === Dispatch Logic (Mirrors BF16 Logic) ===
+
+    if (M <= 128) {
+        // [Small M]
+        
+        if (N >= 4096) {
+            // Target: 64x64
+            launch_w8a16_template<64, 64, BK, APAD, BPAD_BF16, BPAD_INT8>(
+                output, input, weight, bias, scale, M, N, K);
+        } else {
+            // Target: 32x64 -> Mapped to 64x64 for safety
+            launch_w8a16_template<64, 64, BK, APAD, BPAD_BF16, BPAD_INT8>(
+                output, input, weight, bias, scale, M, N, K);
+        }
+    } 
+    else if (M <= 512) {
+        // [Medium M]
+        
+        if (N >= 8192) {
+            // Target: 128x256 (High Throughput)
+            launch_w8a16_template<128, 256, BK, APAD, BPAD_BF16, BPAD_INT8>(
+                output, input, weight, bias, scale, M, N, K);
+        } else {
+            // Target: 128x128 (Balanced)
+            launch_w8a16_template<128, 128, BK, APAD, BPAD_BF16, BPAD_INT8>(
+                output, input, weight, bias, scale, M, N, K);
+        }
+    } 
+    else {
+        // [Large M] (M >= 1024)
+        
+        if (N >= 16384) {
+            // Very large N -> Use largest Tile for Bandwidth
+            launch_w8a16_template<128, 256, BK, APAD, BPAD_BF16, BPAD_INT8>(
+                output, input, weight, bias, scale, M, N, K);
+        } 
+        else if (N <= 6144 && K < 10240) {
+            // Medium N, Not compute bound -> 64x128 offers better wave quantization
+            launch_w8a16_template<64, 128, BK, APAD, BPAD_BF16, BPAD_INT8>(
+                output, input, weight, bias, scale, M, N, K);
+        } 
+        else {
+            // Default Large: 128x128 is robust
+            launch_w8a16_template<128, 128, BK, APAD, BPAD_BF16, BPAD_INT8>(
+                output, input, weight, bias, scale, M, N, K);
+        }
+    }
+}
+
+void linear(std::byte *out, const std::byte *in, const std::byte *weight, const std::byte *bias, llaisysDataType_t type, size_t nrow, size_t ncol_out, size_t ncol_in, const std::byte *scale) {
     const size_t M = nrow;
     const size_t N = ncol_out;
     const size_t K = ncol_in;
@@ -159,6 +248,24 @@ void linear(std::byte *out, const std::byte *in, const std::byte *weight, const 
             return matvec_kernel_warp_vec<<<gridDim, blockDim>>>(reinterpret_cast<cuda_bfloat16 *>(out), reinterpret_cast<const cuda_bfloat16 *>(in), reinterpret_cast<const cuda_bfloat16 *>(weight), reinterpret_cast<const cuda_bfloat16 *>(bias), N, K);
         } else {
             launch_linear_bf16_kernel_autotuned(reinterpret_cast<cuda_bfloat16 *>(out), reinterpret_cast<const cuda_bfloat16 *>(in), reinterpret_cast<const cuda_bfloat16 *>(weight), reinterpret_cast<const cuda_bfloat16 *>(bias), M, N, K);
+        }
+        break;
+    case LLAISYS_DTYPE_I8:
+        if (likely(M == 1)) {
+            dim3 gridDim(N);
+            return matvec_kernel_warp_vec<cuda_bfloat16, int8_t><<<gridDim, blockDim>>>(
+                    (cuda_bfloat16*)out, (const cuda_bfloat16*)in, 
+                    (const int8_t*)weight, (const cuda_bfloat16*)bias, 
+                    N, K, (const cuda_bfloat16*)scale
+                 );
+        } else {
+            launch_linear_w8a16_autotuned(
+                reinterpret_cast<cuda_bfloat16 *>(out),
+                reinterpret_cast<const cuda_bfloat16 *>(in),
+                reinterpret_cast<const int8_t *>(weight),
+                reinterpret_cast<const cuda_bfloat16 *>(bias),
+                reinterpret_cast<const cuda_bfloat16 *>(scale),
+                M, N, K);
         }
         break;
     default:

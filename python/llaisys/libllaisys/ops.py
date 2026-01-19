@@ -11,7 +11,7 @@ def load_ops(lib):
     lib.llaisysEmbedding.argtypes = [llaisysTensor_t, llaisysTensor_t, llaisysTensor_t]
     lib.llaisysEmbedding.restype = None
 
-    lib.llaisysLinear.argtypes = [llaisysTensor_t, llaisysTensor_t, llaisysTensor_t, llaisysTensor_t]
+    lib.llaisysLinear.argtypes = [llaisysTensor_t, llaisysTensor_t, llaisysTensor_t, llaisysTensor_t, llaisysTensor_t]
     lib.llaisysLinear.restype = None
 
     lib.llaisysRearrange.argtypes = [llaisysTensor_t, llaisysTensor_t]

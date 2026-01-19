@@ -19,9 +19,14 @@ def test_op_embedding(
     profile=False,
 ):
     print(f"   idx_shape {idx_shape} embd_shape {embd_shape} dtype <{dtype_name}>")
-    embd, embd_ = random_tensor(embd_shape, dtype_name, device_name)
+    if dtype_name not in ["i8"]:
+        embd, embd_ = random_tensor(embd_shape, dtype_name, device_name)
+        out, out_ = random_tensor((idx_shape[0], embd_shape[1]), dtype_name, device_name)
+    else:
+        embd, embd_ = random_int_tensor(embd_shape, device_name, "i8", low=-128, high=127)
+        out, out_ = random_int_tensor((idx_shape[0], embd_shape[1]), device_name, "i8", low=-128, high=127)
     idx, idx_ = random_int_tensor(idx_shape, device_name, high=embd_shape[0])
-    out, out_ = random_tensor((idx_shape[0], embd_shape[1]), dtype_name, device_name)
+    #out, out_ = random_tensor((idx_shape[0], embd_shape[1]), dtype_name, device_name)
     torch_embedding(out, idx, embd)
     llaisys.Ops.embedding(out_, idx_, embd_)
 
@@ -55,6 +60,7 @@ if __name__ == "__main__":
         "f32",
         "f16",
         "bf16",
+        "i8",
     ]
     print(f"Testing Ops.embedding on {args.device}")
     for idx_shape, embd_shape in testShapes:

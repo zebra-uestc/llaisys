@@ -146,6 +146,9 @@ void self_attention(std::byte *attn_val, const std::byte *q, const std::byte *k,
     case LLAISYS_DTYPE_F16:
         return self_attention_(reinterpret_cast<llaisys::fp16_t *>(attn_val), reinterpret_cast<const llaisys::fp16_t *>(q),
                                reinterpret_cast<const llaisys::fp16_t *>(k), reinterpret_cast<const llaisys::fp16_t *>(v), scale, seqlen, nhead, dv, total_len, nkvhead, d);
+    case LLAISYS_DTYPE_I8:
+        return self_attention_(reinterpret_cast<int8_t *>(attn_val), reinterpret_cast<const int8_t *>(q),
+                               reinterpret_cast<const int8_t *>(k), reinterpret_cast<const int8_t *>(v), scale, seqlen, nhead, dv, total_len, nkvhead, d);
     default:
         EXCEPTION_UNSUPPORTED_DATATYPE(type);
     }

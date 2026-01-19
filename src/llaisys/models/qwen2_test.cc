@@ -528,7 +528,7 @@ __LLAISYS__C {
             // 2.2.1 q_proj
             shape = {seqlen, hs};
             llaisysTensor_t q_proj_tensor = tensorSlice(pool->q_proj[i], 0, 0, seqlen);
-            llaisysLinear(q_proj_tensor, attn_layernorm_tensor, model->weights.attn_q_w[i], model->weights.attn_q_b[i]);
+            llaisysLinear(q_proj_tensor, attn_layernorm_tensor, model->weights.attn_q_w[i], model->weights.attn_q_b[i], nullptr);
 #ifdef DEBUG
             std::cout << "q_proj_tensor: " << std::endl;
             tensorDebug(tensorSlice(q_proj_tensor, 0, seqlen - 1, seqlen));
@@ -547,7 +547,7 @@ __LLAISYS__C {
             // 2.2.3 k_proj
             shape = {seqlen, dkvh};
             llaisysTensor_t k_proj_tensor = tensorSlice(pool->k_proj[i], 0, 0, seqlen);
-            llaisysLinear(k_proj_tensor, attn_layernorm_tensor, model->weights.attn_k_w[i], model->weights.attn_k_b[i]);
+            llaisysLinear(k_proj_tensor, attn_layernorm_tensor, model->weights.attn_k_w[i], model->weights.attn_k_b[i], nullptr);
 #ifdef DEBUG
             std::cout << "k_proj_tensor: " << std::endl;
             tensorDebug(tensorSlice(k_proj_tensor, 0, seqlen - 1, seqlen));
@@ -566,7 +566,7 @@ __LLAISYS__C {
             // 2.2.5 v_proj
             shape = {seqlen, dkvh};
             llaisysTensor_t v_proj_tensor = tensorView(tensorSlice(kvcache->vcache[i], 0, past_len, total_len), shape.data(), shape.size());
-            llaisysLinear(v_proj_tensor, attn_layernorm_tensor, model->weights.attn_v_w[i], model->weights.attn_v_b[i]);
+            llaisysLinear(v_proj_tensor, attn_layernorm_tensor, model->weights.attn_v_w[i], model->weights.attn_v_b[i], nullptr);
 #ifdef DEBUG
             std::cout << "v_proj_tensor: " << std::endl;
             tensorDebug(tensorSlice(v_proj_tensor, 0, seqlen - 1, seqlen));
@@ -588,7 +588,7 @@ __LLAISYS__C {
             shape = {seqlen, hs};
             attn_val_tensor = tensorView(attn_val_tensor, shape.data(), shape.size());
             llaisysTensor_t o_proj_tensor = tensorSlice(pool->o_proj[i], 0, 0, seqlen);
-            llaisysLinear(o_proj_tensor, attn_val_tensor, model->weights.attn_o_w[i], nullptr);
+            llaisysLinear(o_proj_tensor, attn_val_tensor, model->weights.attn_o_w[i], nullptr, nullptr);
 #ifdef DEBUG
             std::cout << "o_proj_tensor: " << std::endl;
             tensorDebug(tensorSlice(o_proj_tensor, 0, seqlen - 1, seqlen));
@@ -615,7 +615,7 @@ __LLAISYS__C {
             // 2.4.1 gate
             shape = {seqlen, di};
             llaisysTensor_t mlp_gate_tensor = tensorSlice(pool->mlp_gate[i], 0, 0, seqlen);
-            llaisysLinear(mlp_gate_tensor, mlp_layernorm_tensor, model->weights.mlp_gate_w[i], nullptr);
+            llaisysLinear(mlp_gate_tensor, mlp_layernorm_tensor, model->weights.mlp_gate_w[i], nullptr, nullptr);
 #ifdef DEBUG
             std::cout << "mlp_gate_tensor: " << std::endl;
             tensorDebug(tensorSlice(mlp_gate_tensor, 0, seqlen - 1, seqlen));
@@ -623,7 +623,7 @@ __LLAISYS__C {
             // 2.4.2 up
             shape = {seqlen, di};
             llaisysTensor_t mlp_up_tensor = tensorSlice(pool->mlp_up[i], 0, 0, seqlen);
-            llaisysLinear(mlp_up_tensor, mlp_layernorm_tensor, model->weights.mlp_up_w[i], nullptr);
+            llaisysLinear(mlp_up_tensor, mlp_layernorm_tensor, model->weights.mlp_up_w[i], nullptr, nullptr);
 #ifdef DEBUG
             std::cout << "mlp_up_tensor: " << std::endl;
             tensorDebug(tensorSlice(mlp_up_tensor, 0, seqlen - 1, seqlen));
@@ -641,7 +641,7 @@ __LLAISYS__C {
             // 2.4.5 down
             shape = {seqlen, hs};
             llaisysTensor_t mlp_down_tensor = tensorSlice(pool->mlp_down[i], 0, 0, seqlen);
-            llaisysLinear(mlp_down_tensor, mlp_swiglu_tensor, model->weights.mlp_down_w[i], nullptr);
+            llaisysLinear(mlp_down_tensor, mlp_swiglu_tensor, model->weights.mlp_down_w[i], nullptr, nullptr);
 #ifdef DEBUG
             std::cout << "mlp_down_tensor: " << std::endl;
             tensorDebug(tensorSlice(mlp_down_tensor, 0, seqlen - 1, seqlen));
@@ -681,7 +681,7 @@ __LLAISYS__C {
         // 3.2 output embedding
         shape = {seqlen, voc};
         llaisysTensor_t output_embed_tensor = tensorSlice(pool->output_embed, 0, 0, seqlen);
-        llaisysLinear(output_embed_tensor, output_layernorm_tensor, model->weights.out_embed, nullptr);
+        llaisysLinear(output_embed_tensor, output_layernorm_tensor, model->weights.out_embed, nullptr, nullptr);
 #ifdef DEBUG
         std::cout << "output_embed_tensor: " << std::endl;
         tensorDebug(tensorSlice(output_embed_tensor, 0, seqlen - 1, seqlen));

@@ -14,6 +14,8 @@ void add(std::byte *c, const std::byte *a, const std::byte *b, llaisysDataType_t
     case LLAISYS_DTYPE_F16:
         return add_f16(reinterpret_cast<llaisys::fp16_t *>(c), reinterpret_cast<const llaisys::fp16_t *>(a),
                        reinterpret_cast<const llaisys::fp16_t *>(b), numel);
+    case LLAISYS_DTYPE_I8:
+        return add_i8(reinterpret_cast<int8_t *>(c), reinterpret_cast<const int8_t *>(a), reinterpret_cast<const int8_t *>(b), numel);
     default:
         EXCEPTION_UNSUPPORTED_DATATYPE(type);
     }
