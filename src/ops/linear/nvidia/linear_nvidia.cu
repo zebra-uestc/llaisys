@@ -117,6 +117,30 @@ void launch_linear_bf16_kernel_autotuned(
     }
 }
 
+template<int BM, int BN, int BK, int APAD, int BPAD_BF16, int BPAD_INT8>
+void launch_w8a16_template(
+    cuda_bfloat16* C, const cuda_bfloat16* A, const int8_t* B, 
+    const cuda_bfloat16* bias, const cuda_bfloat16* scale, 
+    size_t M, size_t N, size_t K) 
+{
+    constexpr size_t smem_operands = 2 * BM * (BK + APAD) * sizeof(cuda_bfloat16) + 
+                                     2 * BN * (BK + BPAD_BF16) * sizeof(cuda_bfloat16);
+    constexpr size_t smem_stage_int8 = 2 * BN * (BK + BPAD_INT8) * sizeof(int8_t);
+    constexpr size_t smem_size = smem_operands + smem_stage_int8;
+
+    cudaFuncSetAttribute(linear_w8a16_kernel<BM, BN, BK, APAD, BPAD_BF16, BPAD_INT8>, 
+                         cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size);
+
+    dim3 gridDim(div_ceil(N, BN), div_ceil(M, BM));
+    
+    int num_warps = (BM / 64) * (BN / 64);
+    num_warps = max(1, min(8, num_warps)); 
+    dim3 blockDim(num_warps * 32);
+
+    linear_w8a16_kernel<BM, BN, BK, APAD, BPAD_BF16, BPAD_INT8>
+        <<<gridDim, blockDim, smem_size>>>(C, A, B, bias, scale, M, N, K);
+}
+
 void linear(std::byte *out, const std::byte *in, const std::byte *weight, const std::byte *bias, llaisysDataType_t type, size_t nrow, size_t ncol_out, size_t ncol_in, const std::byte *scale) {
     const size_t M = nrow;
     const size_t N = ncol_out;
@@ -171,35 +195,57 @@ void linear(std::byte *out, const std::byte *in, const std::byte *weight, const 
                     N, K, (const cuda_bfloat16*)scale
                  );
         } else {
-            constexpr size_t BM = 128;
-            constexpr size_t BN = 256;
-            constexpr size_t BK = 32;
-            constexpr size_t APAD = 8;
-            constexpr size_t BPAD_BF16 = 8;
-            constexpr size_t BPAD_INT8 = 16;
+            // constexpr size_t BM = 128;
+            // constexpr size_t BN = 256;
+            // constexpr size_t BK = 32;
+            // constexpr size_t APAD = 8;
+            // constexpr size_t BPAD_BF16 = 8;
+            // constexpr size_t BPAD_INT8 = 16;
 
-            // 1. BF16 Operands
-            constexpr size_t smem_operands = 2 * BM * (BK + APAD) * sizeof(cuda_bfloat16) + 
-                                             2 * BN * (BK + BPAD_BF16) * sizeof(cuda_bfloat16);
+            // // 1. BF16 Operands
+            // constexpr size_t smem_operands = 2 * BM * (BK + APAD) * sizeof(cuda_bfloat16) + 
+            //                                  2 * BN * (BK + BPAD_BF16) * sizeof(cuda_bfloat16);
             
-            // 2. Int8 Staging Buffer
-            constexpr size_t smem_stage_int8 = 2 * BN * (BK + BPAD_INT8) * sizeof(int8_t);
+            // // 2. Int8 Staging Buffer
+            // constexpr size_t smem_stage_int8 = 2 * BN * (BK + BPAD_INT8) * sizeof(int8_t);
             
-            constexpr size_t smem_size = smem_operands + smem_stage_int8;
+            // constexpr size_t smem_size = smem_operands + smem_stage_int8;
             
-            cudaFuncSetAttribute(linear_w8a16_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size);
+            // cudaFuncSetAttribute(linear_w8a16_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size);
 
-            dim3 gridDim;
-            gridDim.y = div_ceil(M, BM);
-            gridDim.x = div_ceil(N, BN);
+            // dim3 gridDim;
+            // gridDim.y = div_ceil(M, BM);
+            // gridDim.x = div_ceil(N, BN);
             
-            return linear_w8a16_kernel<<<gridDim, blockDim, smem_size>>>(
-                reinterpret_cast<cuda_bfloat16 *>(out),
-                reinterpret_cast<const cuda_bfloat16 *>(in),
-                reinterpret_cast<const int8_t *>(weight),
-                reinterpret_cast<const cuda_bfloat16 *>(bias),
-                reinterpret_cast<const cuda_bfloat16 *>(scale),
-                M, N, K);
+            // return linear_w8a16_kernel<<<gridDim, blockDim, smem_size>>>(
+            //     reinterpret_cast<cuda_bfloat16 *>(out),
+            //     reinterpret_cast<const cuda_bfloat16 *>(in),
+            //     reinterpret_cast<const int8_t *>(weight),
+            //     reinterpret_cast<const cuda_bfloat16 *>(bias),
+            //     reinterpret_cast<const cuda_bfloat16 *>(scale),
+            //     M, N, K);
+            if (M <= 128) {
+                // [Small M] 
+                // 使用小分块以增加 Occupancy (并行度)
+                // 64x64 通常是 latency sensitive 场景的甜点
+                launch_w8a16_template<64, 64, 32, 8, 8, 16>(
+                    (cuda_bfloat16*)out, (const cuda_bfloat16*)in, (const int8_t*)weight, 
+                    (const cuda_bfloat16*)bias, (const cuda_bfloat16*)scale, M, N, K);
+            } 
+            else if (M <= 512) {
+                // [Medium M]
+                // 使用 64x128 或 128x128
+                launch_w8a16_template<128, 128, 32, 8, 8, 16>(
+                    (cuda_bfloat16*)out, (const cuda_bfloat16*)in, (const int8_t*)weight, 
+                    (const cuda_bfloat16*)bias, (const cuda_bfloat16*)scale, M, N, K);
+            }
+            else {
+                // [Large M / Throughput Oriented]
+                // 保持原来的大分块 128x256
+                launch_w8a16_template<128, 256, 32, 8, 8, 16>(
+                    (cuda_bfloat16*)out, (const cuda_bfloat16*)in, (const int8_t*)weight, 
+                    (const cuda_bfloat16*)bias, (const cuda_bfloat16*)scale, M, N, K);
+            }
         }
         break;
     default:

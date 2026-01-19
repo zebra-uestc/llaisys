@@ -1,11 +1,6 @@
 #include "../../../device/nvidia/nvidia_common.cuh"
 
-
-// Helper to convert float to bfloat16
-__device__ __forceinline__ cuda_bfloat16 __float2bfloat16_opt(float f) {
-    return __float2bfloat16(f);
-}
-
+template<int BM, int BN, int BK, int APAD, int BPAD_BF16, int BPAD_INT8>
 __global__ void linear_w8a16_kernel(
     cuda_bfloat16 *__restrict__ C,       // [M, N]
     const cuda_bfloat16 *__restrict__ A, // [M, K]
@@ -14,19 +9,12 @@ __global__ void linear_w8a16_kernel(
     const cuda_bfloat16 *__restrict__ scale,   // [N] - Per-channel scale
     const size_t M, const size_t N, const size_t K) {
 
-    // Block tile sizes
-    const int BM = 128;
-    const int BN = 256;
-    const int BK = 32;
-    const int APAD = 8;
-    const int BPAD_BF16 = 8;
-    const int BPAD_INT8 = 16;
-
     int bx = blockIdx.x;
     int by = blockIdx.y;
     int tid = threadIdx.x;
     int wid = tid >> 5;
     int lane_id = tid & 31;
+    int num_threads = blockDim.x;
 
     // === Shared Memory Layout ===
     // 1. Raw Shared Memory Pointer
@@ -61,57 +49,98 @@ __global__ void linear_w8a16_kernel(
         }
     }
 
-    // === Address Calculation ===
-    // Thread mapping for A (BF16)
-    int load_a_smem_m = (tid >> 2) << 1;
-    int load_a_smem_k = (tid & 3) << 3;
-    int load_a_gmem_m = by * BM + load_a_smem_m;
-    
-    // Thread mapping for B (Int8 Staging)
-    // We need to load BN(256) * BK(32) bytes using 256 threads.
-    // Each thread loads 16 bytes (int4) per step.
-    // Total steps needed: (256 * 32) / (256 * 16) = 2 steps.
-    int load_b_int8_n = tid / 2;     // 0..127
-    int load_b_int8_k = (tid % 2) * 16; // 0 or 16
+    int warps_n = BN / 64;
+    int comp_c_frag_m = wid / warps_n; // Warp M-index
+    int comp_c_frag_n = wid % warps_n; // Warp N-index
 
-    int comp_c_frag_m = wid & 1;
-    int comp_c_frag_n = wid >> 1;
-
-    // === Helper Lambda: Expand Int8 (SMEM) -> BF16 (SMEM) ===
-    auto expand_int8_to_bf16 = [&](int buffer_idx) {
-        // Each thread handles one row of B tile (BK=32 elements)
-        // Since blockDim.x = 256 and BN = 256, mapping is 1-to-1 for rows.
-        int row = tid; 
+    // Lambda: Robust Load A (Stride Loop)
+    auto load_a_gmem_to_smem = [&](int k_start, int buffer_idx) {
+        int smem_base = buffer_idx * s_a_db_offset;
+        // Total elements to load: BM * BK
+        // Each thread loads 8 elements (128 bits) -> use int4
+        // Total threads needed: (BM * BK * 2) / 16 = (BM * BK) / 8
+        // Using loop to cover
         
-        if (row < BN) {
-            // Load Scale for this row (Per-Channel)
+        // Use vectorized load int4 (8 x bf16)
+        int total_vec_loads = (BM * BK) / 8;
+        
+        #pragma unroll 1 // No unroll for variable loop
+        for (int idx = tid; idx < total_vec_loads; idx += num_threads) {
+            int row = idx / (BK / 8); 
+            int col_vec = idx % (BK / 8);
+            int col = col_vec * 8;
+            
+            int gmem_m = by * BM + row;
+            int gmem_k = k_start + col;
+            
+            uint32_t smem_addr = __cvta_generic_to_shared(&s_a[smem_base + OFFSET(row, col, BK + APAD)]);
+            
+            const cuda_bfloat16 *src_ptr = &A[OFFSET(gmem_m, gmem_k, K)];
+            // Check Bounds (Vectorized)
+            // Assuming K is multiple of 8 (BK=32)
+            bool valid = (gmem_m < M) && (gmem_k < K);
+            // cp.async handles predicate 0 byte copy safely? No, need to pass 0 bytes.
+            int copy_bytes = valid ? 16 : 0;
+            
+            asm volatile("cp.async.ca.shared.global [%0], [%1], 16, %2;\n" 
+                :: "r"(smem_addr), "l"(src_ptr), "r"(copy_bytes));
+        }
+    };
+ 
+    // Lambda: Robust Load B (Int8) (Stride Loop)
+    auto load_b_gmem_to_smem = [&](int k_start, int buffer_idx) {
+        int smem_base = buffer_idx * s_b_int8_db_offset;
+        // Total Int8 elements: BN * BK
+        // Vector load 16 bytes (int4)
+        int total_vec_loads = (BN * BK) / 16;
+        
+        #pragma unroll 1
+        for (int idx = tid; idx < total_vec_loads; idx += num_threads) {
+            int row = idx / (BK / 16); // Row in B (0..BN-1)
+            int col_vec = idx % (BK / 16);
+            int col = col_vec * 16;
+            
+            int gmem_n = bx * BN + row;
+            int gmem_k = k_start + col;
+            
+            uint32_t smem_addr = __cvta_generic_to_shared(&s_b_int8[smem_base + row * (BK + BPAD_INT8) + col]);
+            const int8_t *src_ptr = &B[OFFSET(gmem_n, gmem_k, K)];
+            
+            bool valid = (gmem_n < N) && (gmem_k < K);
+            int copy_bytes = valid ? 16 : 0;
+            
+            asm volatile("cp.async.ca.shared.global [%0], [%1], 16, %2;\n" 
+                :: "r"(smem_addr), "l"(src_ptr), "r"(copy_bytes));
+        }
+    };
+ 
+    // Lambda: Robust Expand
+    auto expand_int8_to_bf16 = [&](int buffer_idx) {
+        // Each thread converts a chunk. 
+        // Total rows to convert = BN.
+        // Each thread processes 1 row? 
+        // If threads < BN, we need stride.
+        
+        for (int row = tid; row < BN; row += num_threads) {
             int global_n_idx = bx * BN + row;
             float row_scale_f = (global_n_idx < N) ? __bfloat162float(scale[global_n_idx]) : 0.0f;
             
-            // Pointers
             int8_t* src_ptr = s_b_int8 + buffer_idx * s_b_int8_db_offset + row * (BK + BPAD_INT8);
             cuda_bfloat16* dst_ptr = s_b + buffer_idx * s_b_db_offset + row * (BK + BPAD_BF16);
             
-            // Vectorized Conversion: 32 elements = 2 x int4 (16 bytes)
-            // We use int4 to load 16 bytes at once
+            // 32 elements per row (BK=32). Load 2 x int4 (16 bytes each)
             int4* src_vec = reinterpret_cast<int4*>(src_ptr);
-            // We write 2 * float4 (where each float4 is interpreted as 8 bf16s = 16 bytes)
             float4* dst_vec = reinterpret_cast<float4*>(dst_ptr);
-
+ 
             #pragma unroll
             for(int k=0; k<2; k++) {
                 int4 loaded_bytes = src_vec[k];
                 int8_t* bytes = reinterpret_cast<int8_t*>(&loaded_bytes);
-                
-                // Temp buffer for 16 bf16s
                 cuda_bfloat16 buffer[16];
-                
                 #pragma unroll
                 for(int x=0; x<16; x++) {
                     buffer[x] = __float2bfloat16((float)bytes[x] * row_scale_f);
                 }
-                
-                // Write back as vector (16 bytes = 1 float4)
                 dst_vec[k*2 + 0] = reinterpret_cast<float4*>(buffer)[0];
                 dst_vec[k*2 + 1] = reinterpret_cast<float4*>(buffer)[1];
             }
@@ -120,45 +149,13 @@ __global__ void linear_w8a16_kernel(
 
     // === Prologue: Load First Tile ===
     {
-        // 1. Load A (BF16)
-        #pragma unroll
-        for (int i = 0; i < 2; i++) {
-            int gmem_m = load_a_gmem_m + i;
-            int gmem_k = load_a_smem_k; // k=0
-            int smem_m = load_a_smem_m + i;
-            
-            const cuda_bfloat16 *src_ptr = &A[OFFSET(gmem_m, gmem_k, K)];
-            uint32_t smem_addr = __cvta_generic_to_shared(&s_a[OFFSET(smem_m, load_a_smem_k, BK + APAD)]);
-            
-            int src_bytes = (gmem_m < M && gmem_k < K) ? min(16, (int)(K - gmem_k) * 2) : 0;
-            
-            asm volatile("cp.async.ca.shared.global [%0], [%1], 16, %2;\n" 
-                :: "r"(smem_addr), "l"(src_ptr), "r"(src_bytes));
-        }
-
-        // 2. Load B (Int8) into Staging Buffer
-        #pragma unroll
-        for(int k_iter=0; k_iter<2; k_iter++) {
-             int my_n = load_b_int8_n + k_iter * 128; // stride 128
-             int my_k = load_b_int8_k;
-             
-             int gmem_n = bx * BN + my_n;
-             int gmem_k = my_k; // k=0
-             
-             const int8_t *src_ptr = &B[OFFSET(gmem_n, gmem_k, K)];
-             uint32_t smem_addr = __cvta_generic_to_shared(&s_b_int8[my_n * (BK + BPAD_INT8) + my_k]);
-             
-             int src_bytes = (gmem_n < N && gmem_k < K) ? min(16, (int)(K - gmem_k)) : 0;
-             
-             asm volatile("cp.async.ca.shared.global [%0], [%1], 16, %2;\n" 
-                :: "r"(smem_addr), "l"(src_ptr), "r"(src_bytes));
-        }
-
+        load_a_gmem_to_smem(0, 0);
+        load_b_gmem_to_smem(0, 0);
+        
         asm("cp.async.commit_group;\n" ::);
         asm("cp.async.wait_group 0;\n" ::);
         __syncthreads();
         
-        // 3. Dequantize First Tile (Int8 -> BF16)
         expand_int8_to_bf16(0);
         __syncthreads();
     }
@@ -171,62 +168,34 @@ __global__ void linear_w8a16_kernel(
         int curr_idx = (bk - 1) & 1;
         int next_idx = bk & 1;
 
-        // 1. Issue Async Load for NEXT Tile
-        
-        // Load Next A
-        #pragma unroll
-        for (int i = 0; i < 2; i++) {
-            int gmem_m = load_a_gmem_m + i;
-            int gmem_k = k_start + load_a_smem_k;
-            int smem_m = load_a_smem_m + i;
-            
-            const cuda_bfloat16 *src_ptr = &A[OFFSET(gmem_m, gmem_k, K)];
-            uint32_t smem_addr = __cvta_generic_to_shared(&s_a[OFFSET(smem_m, load_a_smem_k, BK + APAD) + next_idx * s_a_db_offset]);
-            
-            int src_bytes = (gmem_m < M && gmem_k < K) ? min(16, (int)(K - gmem_k) * 2) : 0;
-            asm volatile("cp.async.ca.shared.global [%0], [%1], 16, %2;\n" :: "r"(smem_addr), "l"(src_ptr), "r"(src_bytes));
-        }
-
-        // Load Next B (Int8)
-        #pragma unroll
-        for(int k_iter=0; k_iter<2; k_iter++) {
-             int my_n = load_b_int8_n + k_iter * 128; 
-             int my_k = load_b_int8_k;
-             int gmem_n = bx * BN + my_n;
-             int gmem_k = k_start + my_k;
-             
-             const int8_t *src_ptr = &B[OFFSET(gmem_n, gmem_k, K)];
-             // Write to Staging Buffer [Next]
-             uint32_t smem_addr = __cvta_generic_to_shared(&s_b_int8[my_n * (BK + BPAD_INT8) + my_k + next_idx * s_b_int8_db_offset]);
-             
-             int src_bytes = (gmem_n < N && gmem_k < K) ? min(16, (int)(K - gmem_k)) : 0;
-             asm volatile("cp.async.ca.shared.global [%0], [%1], 16, %2;\n" :: "r"(smem_addr), "l"(src_ptr), "r"(src_bytes));
-        }
-
+        // Async Load Next
+        load_a_gmem_to_smem(k_start, next_idx);
+        load_b_gmem_to_smem(k_start, next_idx);
         asm("cp.async.commit_group;\n" ::);
 
-        // 2. Compute CURRENT Tile
-        // Use s_b (BF16) which is already populated
+        // Compute Current
+        // Offsets must use comp_c_frag_m/n which are calculated robustly
+        int base_m = comp_c_frag_m * 64;
+        int base_n = comp_c_frag_n * 64;
         
-        // Load A Fragments
-        wmma::load_matrix_sync(frag_a[0][0], &s_a[OFFSET(comp_c_frag_m * 64, 0, BK + APAD) + curr_idx * s_a_db_offset], BK + APAD);
-        wmma::load_matrix_sync(frag_a[0][1], &s_a[OFFSET(comp_c_frag_m * 64 + 16, 0, BK + APAD) + curr_idx * s_a_db_offset], BK + APAD);
-        wmma::load_matrix_sync(frag_a[0][2], &s_a[OFFSET(comp_c_frag_m * 64 + 32, 0, BK + APAD) + curr_idx * s_a_db_offset], BK + APAD);
-        wmma::load_matrix_sync(frag_a[0][3], &s_a[OFFSET(comp_c_frag_m * 64 + 48, 0, BK + APAD) + curr_idx * s_a_db_offset], BK + APAD);
-        wmma::load_matrix_sync(frag_a[1][0], &s_a[OFFSET(comp_c_frag_m * 64, 16, BK + APAD) + curr_idx * s_a_db_offset], BK + APAD);
-        wmma::load_matrix_sync(frag_a[1][1], &s_a[OFFSET(comp_c_frag_m * 64 + 16, 16, BK + APAD) + curr_idx * s_a_db_offset], BK + APAD);
-        wmma::load_matrix_sync(frag_a[1][2], &s_a[OFFSET(comp_c_frag_m * 64 + 32, 16, BK + APAD) + curr_idx * s_a_db_offset], BK + APAD);
-        wmma::load_matrix_sync(frag_a[1][3], &s_a[OFFSET(comp_c_frag_m * 64 + 48, 16, BK + APAD) + curr_idx * s_a_db_offset], BK + APAD);
+        wmma::load_matrix_sync(frag_a[0][0], &s_a[OFFSET(base_m, 0, BK + APAD) + curr_idx * s_a_db_offset], BK + APAD);
+        wmma::load_matrix_sync(frag_a[0][1], &s_a[OFFSET(base_m + 16, 0, BK + APAD) + curr_idx * s_a_db_offset], BK + APAD);
+        wmma::load_matrix_sync(frag_a[0][2], &s_a[OFFSET(base_m + 32, 0, BK + APAD) + curr_idx * s_a_db_offset], BK + APAD);
+        wmma::load_matrix_sync(frag_a[0][3], &s_a[OFFSET(base_m + 48, 0, BK + APAD) + curr_idx * s_a_db_offset], BK + APAD);
+        wmma::load_matrix_sync(frag_a[1][0], &s_a[OFFSET(base_m, 16, BK + APAD) + curr_idx * s_a_db_offset], BK + APAD);
+        wmma::load_matrix_sync(frag_a[1][1], &s_a[OFFSET(base_m + 16, 16, BK + APAD) + curr_idx * s_a_db_offset], BK + APAD);
+        wmma::load_matrix_sync(frag_a[1][2], &s_a[OFFSET(base_m + 32, 16, BK + APAD) + curr_idx * s_a_db_offset], BK + APAD);
+        wmma::load_matrix_sync(frag_a[1][3], &s_a[OFFSET(base_m + 48, 16, BK + APAD) + curr_idx * s_a_db_offset], BK + APAD);
+ 
+        wmma::load_matrix_sync(frag_b[0][0], &s_b[OFFSET(base_n, 0, BK + BPAD_BF16) + curr_idx * s_b_db_offset], BK + BPAD_BF16);
+        wmma::load_matrix_sync(frag_b[0][1], &s_b[OFFSET(base_n + 16, 0, BK + BPAD_BF16) + curr_idx * s_b_db_offset], BK + BPAD_BF16);
+        wmma::load_matrix_sync(frag_b[0][2], &s_b[OFFSET(base_n + 32, 0, BK + BPAD_BF16) + curr_idx * s_b_db_offset], BK + BPAD_BF16);
+        wmma::load_matrix_sync(frag_b[0][3], &s_b[OFFSET(base_n + 48, 0, BK + BPAD_BF16) + curr_idx * s_b_db_offset], BK + BPAD_BF16);
+        wmma::load_matrix_sync(frag_b[1][0], &s_b[OFFSET(base_n, 16, BK + BPAD_BF16) + curr_idx * s_b_db_offset], BK + BPAD_BF16);
+        wmma::load_matrix_sync(frag_b[1][1], &s_b[OFFSET(base_n + 16, 16, BK + BPAD_BF16) + curr_idx * s_b_db_offset], BK + BPAD_BF16);
+        wmma::load_matrix_sync(frag_b[1][2], &s_b[OFFSET(base_n + 32, 16, BK + BPAD_BF16) + curr_idx * s_b_db_offset], BK + BPAD_BF16);
+        wmma::load_matrix_sync(frag_b[1][3], &s_b[OFFSET(base_n + 48, 16, BK + BPAD_BF16) + curr_idx * s_b_db_offset], BK + BPAD_BF16);
 
-        // Load B Fragments
-        wmma::load_matrix_sync(frag_b[0][0], &s_b[OFFSET(comp_c_frag_n * 64, 0, BK + BPAD_BF16) + curr_idx * s_b_db_offset], BK + BPAD_BF16);
-        wmma::load_matrix_sync(frag_b[0][1], &s_b[OFFSET(comp_c_frag_n * 64 + 16, 0, BK + BPAD_BF16) + curr_idx * s_b_db_offset], BK + BPAD_BF16);
-        wmma::load_matrix_sync(frag_b[0][2], &s_b[OFFSET(comp_c_frag_n * 64 + 32, 0, BK + BPAD_BF16) + curr_idx * s_b_db_offset], BK + BPAD_BF16);
-        wmma::load_matrix_sync(frag_b[0][3], &s_b[OFFSET(comp_c_frag_n * 64 + 48, 0, BK + BPAD_BF16) + curr_idx * s_b_db_offset], BK + BPAD_BF16);
-        wmma::load_matrix_sync(frag_b[1][0], &s_b[OFFSET(comp_c_frag_n * 64, 16, BK + BPAD_BF16) + curr_idx * s_b_db_offset], BK + BPAD_BF16);
-        wmma::load_matrix_sync(frag_b[1][1], &s_b[OFFSET(comp_c_frag_n * 64 + 16, 16, BK + BPAD_BF16) + curr_idx * s_b_db_offset], BK + BPAD_BF16);
-        wmma::load_matrix_sync(frag_b[1][2], &s_b[OFFSET(comp_c_frag_n * 64 + 32, 16, BK + BPAD_BF16) + curr_idx * s_b_db_offset], BK + BPAD_BF16);
-        wmma::load_matrix_sync(frag_b[1][3], &s_b[OFFSET(comp_c_frag_n * 64 + 48, 16, BK + BPAD_BF16) + curr_idx * s_b_db_offset], BK + BPAD_BF16);
 
         // WMMA Compute
         #pragma unroll
@@ -250,25 +219,28 @@ __global__ void linear_w8a16_kernel(
     // === Process Last Tile (Compute Only) ===
     int curr_idx = (num_k_tiles - 1) & 1;
 
+    int base_m = comp_c_frag_m * 64;
+    int base_n = comp_c_frag_n * 64;
+
     // Load Last A
-    wmma::load_matrix_sync(frag_a[0][0], &s_a[OFFSET(comp_c_frag_m * 64, 0, BK + APAD) + curr_idx * s_a_db_offset], BK + APAD);
-    wmma::load_matrix_sync(frag_a[0][1], &s_a[OFFSET(comp_c_frag_m * 64 + 16, 0, BK + APAD) + curr_idx * s_a_db_offset], BK + APAD);
-    wmma::load_matrix_sync(frag_a[0][2], &s_a[OFFSET(comp_c_frag_m * 64 + 32, 0, BK + APAD) + curr_idx * s_a_db_offset], BK + APAD);
-    wmma::load_matrix_sync(frag_a[0][3], &s_a[OFFSET(comp_c_frag_m * 64 + 48, 0, BK + APAD) + curr_idx * s_a_db_offset], BK + APAD);
-    wmma::load_matrix_sync(frag_a[1][0], &s_a[OFFSET(comp_c_frag_m * 64, 16, BK + APAD) + curr_idx * s_a_db_offset], BK + APAD);
-    wmma::load_matrix_sync(frag_a[1][1], &s_a[OFFSET(comp_c_frag_m * 64 + 16, 16, BK + APAD) + curr_idx * s_a_db_offset], BK + APAD);
-    wmma::load_matrix_sync(frag_a[1][2], &s_a[OFFSET(comp_c_frag_m * 64 + 32, 16, BK + APAD) + curr_idx * s_a_db_offset], BK + APAD);
-    wmma::load_matrix_sync(frag_a[1][3], &s_a[OFFSET(comp_c_frag_m * 64 + 48, 16, BK + APAD) + curr_idx * s_a_db_offset], BK + APAD);
+    wmma::load_matrix_sync(frag_a[0][0], &s_a[OFFSET(base_m, 0, BK + APAD) + curr_idx * s_a_db_offset], BK + APAD);
+    wmma::load_matrix_sync(frag_a[0][1], &s_a[OFFSET(base_m + 16, 0, BK + APAD) + curr_idx * s_a_db_offset], BK + APAD);
+    wmma::load_matrix_sync(frag_a[0][2], &s_a[OFFSET(base_m + 32, 0, BK + APAD) + curr_idx * s_a_db_offset], BK + APAD);
+    wmma::load_matrix_sync(frag_a[0][3], &s_a[OFFSET(base_m + 48, 0, BK + APAD) + curr_idx * s_a_db_offset], BK + APAD);
+    wmma::load_matrix_sync(frag_a[1][0], &s_a[OFFSET(base_m, 16, BK + APAD) + curr_idx * s_a_db_offset], BK + APAD);
+    wmma::load_matrix_sync(frag_a[1][1], &s_a[OFFSET(base_m + 16, 16, BK + APAD) + curr_idx * s_a_db_offset], BK + APAD);
+    wmma::load_matrix_sync(frag_a[1][2], &s_a[OFFSET(base_m + 32, 16, BK + APAD) + curr_idx * s_a_db_offset], BK + APAD);
+    wmma::load_matrix_sync(frag_a[1][3], &s_a[OFFSET(base_m + 48, 16, BK + APAD) + curr_idx * s_a_db_offset], BK + APAD);
 
     // Load Last B
-    wmma::load_matrix_sync(frag_b[0][0], &s_b[OFFSET(comp_c_frag_n * 64, 0, BK + BPAD_BF16) + curr_idx * s_b_db_offset], BK + BPAD_BF16);
-    wmma::load_matrix_sync(frag_b[0][1], &s_b[OFFSET(comp_c_frag_n * 64 + 16, 0, BK + BPAD_BF16) + curr_idx * s_b_db_offset], BK + BPAD_BF16);
-    wmma::load_matrix_sync(frag_b[0][2], &s_b[OFFSET(comp_c_frag_n * 64 + 32, 0, BK + BPAD_BF16) + curr_idx * s_b_db_offset], BK + BPAD_BF16);
-    wmma::load_matrix_sync(frag_b[0][3], &s_b[OFFSET(comp_c_frag_n * 64 + 48, 0, BK + BPAD_BF16) + curr_idx * s_b_db_offset], BK + BPAD_BF16);
-    wmma::load_matrix_sync(frag_b[1][0], &s_b[OFFSET(comp_c_frag_n * 64, 16, BK + BPAD_BF16) + curr_idx * s_b_db_offset], BK + BPAD_BF16);
-    wmma::load_matrix_sync(frag_b[1][1], &s_b[OFFSET(comp_c_frag_n * 64 + 16, 16, BK + BPAD_BF16) + curr_idx * s_b_db_offset], BK + BPAD_BF16);
-    wmma::load_matrix_sync(frag_b[1][2], &s_b[OFFSET(comp_c_frag_n * 64 + 32, 16, BK + BPAD_BF16) + curr_idx * s_b_db_offset], BK + BPAD_BF16);
-    wmma::load_matrix_sync(frag_b[1][3], &s_b[OFFSET(comp_c_frag_n * 64 + 48, 16, BK + BPAD_BF16) + curr_idx * s_b_db_offset], BK + BPAD_BF16);
+    wmma::load_matrix_sync(frag_b[0][0], &s_b[OFFSET(base_n, 0, BK + BPAD_BF16) + curr_idx * s_b_db_offset], BK + BPAD_BF16);
+    wmma::load_matrix_sync(frag_b[0][1], &s_b[OFFSET(base_n + 16, 0, BK + BPAD_BF16) + curr_idx * s_b_db_offset], BK + BPAD_BF16);
+    wmma::load_matrix_sync(frag_b[0][2], &s_b[OFFSET(base_n + 32, 0, BK + BPAD_BF16) + curr_idx * s_b_db_offset], BK + BPAD_BF16);
+    wmma::load_matrix_sync(frag_b[0][3], &s_b[OFFSET(base_n + 48, 0, BK + BPAD_BF16) + curr_idx * s_b_db_offset], BK + BPAD_BF16);
+    wmma::load_matrix_sync(frag_b[1][0], &s_b[OFFSET(base_n, 16, BK + BPAD_BF16) + curr_idx * s_b_db_offset], BK + BPAD_BF16);
+    wmma::load_matrix_sync(frag_b[1][1], &s_b[OFFSET(base_n + 16, 16, BK + BPAD_BF16) + curr_idx * s_b_db_offset], BK + BPAD_BF16);
+    wmma::load_matrix_sync(frag_b[1][2], &s_b[OFFSET(base_n + 32, 16, BK + BPAD_BF16) + curr_idx * s_b_db_offset], BK + BPAD_BF16);
+    wmma::load_matrix_sync(frag_b[1][3], &s_b[OFFSET(base_n + 48, 16, BK + BPAD_BF16) + curr_idx * s_b_db_offset], BK + BPAD_BF16);
 
     #pragma unroll
     for (int i = 0; i < 4; i++) {
@@ -280,8 +252,8 @@ __global__ void linear_w8a16_kernel(
     }
 
     // ==================== Store Result ====================
-    int store_c_gmem_m = by * BM + comp_c_frag_m * 64;
-    int store_c_gmem_n = bx * BN + comp_c_frag_n * 64;
+    int store_c_gmem_m = by * BM + base_m;
+    int store_c_gmem_n = bx * BN + base_n;
 
     // Reuse s_b memory area for float accumulators (save Shared Memory)
     // NOTE: s_b (BF16) size is enough to hold float accumulators.
