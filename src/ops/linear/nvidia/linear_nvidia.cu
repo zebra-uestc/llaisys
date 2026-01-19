@@ -260,8 +260,8 @@ void linear(std::byte *out, const std::byte *in, const std::byte *weight, const 
                  );
         } else {
             launch_linear_w8a16_autotuned(
-                reinterpret_cast<cuda_bfloat16 *>(output),
-                reinterpret_cast<const cuda_bfloat16 *>(input),
+                reinterpret_cast<cuda_bfloat16 *>(out),
+                reinterpret_cast<const cuda_bfloat16 *>(in),
                 reinterpret_cast<const int8_t *>(weight),
                 reinterpret_cast<const cuda_bfloat16 *>(bias),
                 reinterpret_cast<const cuda_bfloat16 *>(scale),
