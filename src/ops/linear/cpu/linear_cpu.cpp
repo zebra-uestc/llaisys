@@ -1,5 +1,6 @@
 #include "linear_cpu.hpp"
 #include "matmul.hpp"
+#include "matmul_quantized.hpp"
 #include "vecmul.hpp"
 
 #include "../../../utils.hpp"
@@ -81,8 +82,6 @@ void linear_(T *out, const T *in, const T *weight, const T *bias,
         llaisys::utils::fp32_to_bf16_batch(out, out_fp32.data(), M * N);
     }
 }
-
-static thread_local std::vector<float> g_workspace(32 * 1024 * 1024);
 
 static inline float hsum_avx256(__m256 v) {
     __m128 vlow = _mm256_castps256_ps128(v);
@@ -192,37 +191,15 @@ void linear_(float *output, const float *in, const int8_t *weight, const float *
     if (M == 1) {
         linear_decode_simd(output, in, weight, ncol_out, ncol_in, scale, bias);
     } else {
-        size_t required = N * K;
-        if (g_workspace.size() < required) g_workspace.resize(required);
-        
-        float* weight_fp32_ptr = g_workspace.data();
-
-        llaisys::utils::int8_to_fp32_batch(weight_fp32_ptr, weight, required);
-
-        std::memset(output, 0, M * N * sizeof(float));
-
-        if (M == 1) {
-            vecmul(in, weight_fp32_ptr, output, N, K);
-        } else {
-            matmul(in, weight_fp32_ptr, output, M, N, K);
-        }
-        #pragma omp parallel for
-        for (size_t m = 0; m < M; ++m) {
-            float* out_row = output + m * N;
-            for (size_t n = 0; n < N; ++n) {
-                float val = out_row[n];
-                
-                if (scale) {
-                    val *= scale[n];
-                }
-                
-                if (bias) {
-                    val += bias[n];
-                }
-                
-                out_row[n] = val;
+        if (bias) {
+            for (size_t i = 0; i < M; ++i) {
+                std::memcpy(output + i * N, bias, N * sizeof(float));
             }
+        } else {
+            memset(output, 0, M * N * sizeof(float));
         }
+
+        matmul_quantized(in, weight, output, M, N, K, scale);
     }
 }
 
