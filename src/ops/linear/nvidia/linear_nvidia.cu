@@ -174,12 +174,19 @@ void linear(std::byte *out, const std::byte *in, const std::byte *weight, const 
             constexpr size_t BM = 128;
             constexpr size_t BN = 256;
             constexpr size_t BK = 32;
-            constexpr size_t PAD = 8;
+            constexpr size_t APAD = 8;
+            constexpr size_t BPAD_BF16 = 8;
+            constexpr size_t BPAD_INT8 = 16;
 
-            constexpr size_t smem_size = 2 * (BM + BN) * (BK + PAD) * sizeof(cuda_bfloat16) + 
-                                         8 * 16 * 16 * sizeof(float) + 
-                                         8 * 16 * 16 * sizeof(cuda_bfloat16);
-                                         
+            // 1. BF16 Operands
+            constexpr size_t smem_operands = 2 * BM * (BK + APAD) * sizeof(cuda_bfloat16) + 
+                                             2 * BN * (BK + BPAD_BF16) * sizeof(cuda_bfloat16);
+            
+            // 2. Int8 Staging Buffer
+            constexpr size_t smem_stage_int8 = 2 * BN * (BK + BPAD_INT8) * sizeof(int8_t);
+            
+            constexpr size_t smem_size = smem_operands + smem_stage_int8;
+            
             cudaFuncSetAttribute(linear_w8a16_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size);
 
             dim3 gridDim;
@@ -191,7 +198,7 @@ void linear(std::byte *out, const std::byte *in, const std::byte *weight, const 
                 reinterpret_cast<const cuda_bfloat16 *>(in),
                 reinterpret_cast<const int8_t *>(weight),
                 reinterpret_cast<const cuda_bfloat16 *>(bias),
-                reinterpret_cast<const cuda_bfloat16 *>(scale),   // Per-channel scale
+                reinterpret_cast<const cuda_bfloat16 *>(scale),
                 M, N, K);
         }
         break;
